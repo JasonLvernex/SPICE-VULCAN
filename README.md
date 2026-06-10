@@ -41,9 +41,8 @@ SPICE_MARGARITA/
 │   ├── xcorr.py           # Cross-correlation frequency alignment
 │   └── utils.py           # Backward-compatibility re-export shim
 ├── 2pi_csap_SMF_MRSI/     # Basis set (JSON metabolite definitions)
-├── Hess10.sh              # HPC submission script for Hessian computation
-├── submit_hessian.sh      # HPC submission script
-└── submit_lobpcg.sh       # HPC submission script
+├── environment.yml        # Conda environment specification
+└── pyproject.toml         # Package metadata and pip dependencies
 ```
 
 > **Data directories** (`invivo_260305/`, `output/`, `save_iter*/`) are excluded from version control. Download or generate them separately.
@@ -53,34 +52,41 @@ SPICE_MARGARITA/
 Run scripts in order from the project root:
 
 ```bash
-# 1. Coil sensitivity maps
-python scripts/01_coilmap.py \
-    --data-dir ./invivo_260305/cr/ --out-dir ./output
+# 01. Coil sensitivity (MORSE-PI default)
+python scripts/01_coil_correction.py \
+    --data-dir ./invivo_260305/cr/ --out-dir ./output \
+    --n-ref 6 --max-iter 50 --calib-width 16
 
-# 2. B0 correction
+# 02. B0 map estimation and phase correction
 python scripts/02_b0_correction.py \
     --data-dir ./invivo_260305/cr/ --out-dir ./output
 
-# 3. Lipid removal
+# 03. Lipid suppression
 python scripts/03_lipid_removal.py \
     --data-dir ./invivo_260305/cr/ --out-dir ./output
 
-# 4. SPICE reconstruction
+# 04. SPICE reconstruction with spatial constraint
 python scripts/04_run_spice.py \
     --data-dir ./invivo_260305/cr/ --basis-dir ./2pi_csap_SMF_MRSI/ \
     --out-dir ./output --rank 20 --lambda1 1e-4
 
-# 5. Spectral fitting
-python scripts/05_spectral_fitting.py \
+# 05. Adjoint NUFFT reconstruction
+python scripts/05_adjoint_recon.py \
     --data-dir ./invivo_260305/cr/ --out-dir ./output
 
-# 6-7. Iterative / adjoint NUFFT reconstruction
-python scripts/06_iterative_nufft_recon.py --out-dir ./output ...
-python scripts/07_adjoint_recon.py --out-dir ./output ...
+# 06. Iterative NUFFT reconstruction
+python scripts/06_iterative_nufft_recon.py \
+    --data-dir ./invivo_260305/cr/ --out-dir ./output
 
-# 8-10. Hessian uncertainty (parallelisable over voxels)
-python scripts/08_uncertainty.py --out-dir ./output --hess-dir ./output/Hess_1e4 ...
-python scripts/10_uncertainty_lobpcg.py --hess-dir ./output/Hess_1e4 --rank 20 ...
+# 07. FSL-MRS spectral fitting
+python scripts/07_spectral_fitting.py \
+    --data-dir ./invivo_260305/cr/ --out-dir ./output
+
+# 08-10. Hessian uncertainty (parallelisable over voxels)
+python scripts/08_prefitting_uncertainty.py \
+    --out-dir ./output --hess-dir ./output/Hess_1e4 ...
+python scripts/10_uncertainty_lobpcg.py \
+    --hess-dir ./output/Hess_1e4 --rank 20 ...
 
 # 11-12. Concentration uncertainty maps
 python scripts/11_laplacian_conc_uncertainty.py --out-dir ./output ...
