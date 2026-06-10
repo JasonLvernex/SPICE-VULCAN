@@ -8,18 +8,19 @@ version = "0.1.0"
 description = "SPICE-MARGARITA: 2D MRSI reconstruction and metabolite uncertainty quantification"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy",
-    "scipy",
-    "matplotlib",
-    "torch",
-    "torchkbnufft",
-    "mri-nufft[finufft]",
-    "fsl-mrs",
-    "nifti-mrs",
-    "networkx",
-    "psutil",
-    "tqdm",
-    "nibabel",
+    "numpy>=2.4.2",
+    "scipy>=1.17.1",
+    "matplotlib>=3.10.8",
+    "torch>=2.10.0",
+    "torchkbnufft>=1.4.0",
+    "finufft>=2.4.1",
+    "mri-nufft[finufft]>=1.4.0",
+    "fsl-mrs>=2.4.12",
+    "nifti-mrs>=1.3.4",
+    "networkx>=3.6.1",
+    "nibabel>=5.3.2",
+    "psutil>=7.2.2",
+    "tqdm>=4.67.3",
 ]
 
 [tool.setuptools.packages.find]

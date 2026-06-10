@@ -23,9 +23,16 @@ Two methods are available via --method (default: morse-pi):
 Both methods write: <out_dir>/coilmap/ecalib_pp.npy  (n_coils × Ny × Nx, complex64)
 
 Usage:
+    # MORSE-PI (default)
     python scripts/01_coil_correction.py \\
         --data-dir ./invivo_260305/cr/ \\
-        [--out-dir ./output] [--method morse-pi] [--dim 64 64] [--save-plots]
+        --n-ref 6 --max-iter 50 --calib-width 16 \\
+        [--out-dir ./output] [--dim 64 64] [--save-plots]
+
+    # RNI (2D only)
+    python scripts/01_coil_correction.py \\
+        --data-dir ./invivo_260305/cr/ --method rni \\
+        [--out-dir ./output] [--save-plots]
 """
 
 import argparse
@@ -151,9 +158,9 @@ def parse_args():
                    help="Number of reference coils")
     g.add_argument("--smoothing-sd",    type=int, default=3,
                    help="Gaussian smoothing SD for MORSE-PI E matrix")
-    g.add_argument("--calib-width",     type=int, default=12,
+    g.add_argument("--calib-width",     type=int, default=16,
                    help="Calibration region half-width in k-space")
-    g.add_argument("--max-iter",        type=int, default=30,
+    g.add_argument("--max-iter",        type=int, default=50,
                    help="CG iterations in MORSE-PI")
     g.add_argument("--ksp-scale",       type=float, default=None,
                    help="Scale for wref_ksp kx/ky (default: 15.7139.../16)")
