@@ -11,7 +11,7 @@ This codebase implements a full processing pipeline from raw k-space MRSI data t
 
 ### MRSI Reconstruction
 
-1. **SPICE** — spatially-regularized low-rank MRSI reconstruction (Toeplitz and finufft backends). Ref: [Liang 2007](https://pubmed.ncbi.nlm.nih.gov/31483526/)
+1. **SPICE** — spatially-regularized low-rank MRSI reconstruction (Toeplitz and finufft backends). Ref: [Liang 2020](https://pubmed.ncbi.nlm.nih.gov/31483526/)
 2. **Iterative NUFFT reconstruction** — CG solver with B0 correction
 3. **Adjoint NUFFT reconstruction** — fast diagnostic reconstruction
 
