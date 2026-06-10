@@ -1,5 +1,6 @@
 # Data and results — too large for version control
-data/
+data/*
+!data/README.md
 output/
 outputs/
 save_iter*/
