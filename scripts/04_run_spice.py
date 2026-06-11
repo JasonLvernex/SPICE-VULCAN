@@ -387,6 +387,15 @@ def main():
         os.path.join(out_dir, "SPICE_result.nii.gz"))
     print("[spice] Saved SPICE_result.nii.gz")
 
+    # ── Save U and V as NIfTI ─────────────────────────────────────────────────
+    U_nii = est_U.reshape(Ny, Nx, args.rank).transpose(1, 0, 2).conj().astype(np.complex64)
+    Image(U_nii, xform=affine).save(os.path.join(out_dir, "U_subspace.nii.gz"))
+
+    V_nmrs = np.tile(V.T[np.newaxis, np.newaxis, :, :], (Nx, Ny, 1, 1)).conj()
+    gen_nifti_mrs(V_nmrs, dwelltime=TS, spec_freq=297.219, affine=affine).save(
+        os.path.join(out_dir, "V_subspace.nii.gz"))
+    print("[spice] Saved U_subspace.nii.gz and V_subspace.nii.gz")
+
     if args.save_plots:
         plot_voxel_spectrum_and_maps(
             spice_phcorr, im_size,
