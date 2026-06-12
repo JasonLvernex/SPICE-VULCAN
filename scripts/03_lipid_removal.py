@@ -12,10 +12,20 @@ Writes : <out_dir>/lipid_removal/kt_mrsi_lprm.npy
 
 Usage:
     python scripts/03_lipid_removal.py \
-        --data-dir ./data/ \
-        --out-dir  ./output \
-        --dim 64 64 --n-seq-points 300 --k-points 39842 \
-        [--lipid-beta 200] [--save-plots]
+        --data-dir        ./data/ \
+        --out-dir         ./output \
+        --k-points        39842 \
+        --n-seq-points    300 \
+        --n-coils         32 \
+        --dim             64 64 \
+        --ppm-center      3.027 \
+        --brain-threshold 0.00034 \
+        --lipid-beta      200.0 \
+        --n-lipid-voxels  500 \
+        --phase-ppmlim    3.5 5.0 \
+        --plot-voxel      41 24 \
+        --save-plots
+
 """
 
 import argparse
@@ -246,12 +256,12 @@ def main():
     wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
     brain_mask2      = wref_norm > args.brain_threshold2          # normalised (for phase-corr)
 
-    # ── Save adj NUFFT before lipid removal ──────────────────────────────────────
-    img_masked = image_blurry * brain_nolip_mask[:, :, np.newaxis]
-    fid_adj    = SpecToFID(img_masked, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
+    # ── Save adj NUFFT before lipid removal (unmasked, lipid ring visible) ──────
+    fid_adj = SpecToFID(image_blurry, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
     gen_nifti_mrs(fid_adj, dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "adj_bf_lprm.nii.gz"))
     print("[lipidrm] Saved adj_bf_lprm.nii.gz")
+    img_masked = image_blurry * brain_nolip_mask[:, :, np.newaxis]
 
     # ── LSS map ───────────────────────────────────────────────────────────────────
     print("[lipidrm] Computing LSS map …")
@@ -288,6 +298,13 @@ def main():
     mrsi_fid_4d        = SpecToFID(image_blurry, axis=-1)[:, :, np.newaxis, :]  # (Ny,Nx,1,T) FID
     lipid_fids         = mrsi_fid_4d[lipid_mask[:, :, np.newaxis]]              # (N_vox, T)
     lipid_basis        = lipid_fids.T                                            # (T, N_vox)
+
+    # ── Save lipid basis as NIfTI-MRS (tiled to image size) ──────────────────
+    lipid_nmrs = np.tile(lipid_basis.T[np.newaxis, np.newaxis, :, :], (Nx, Ny, 1, 1))
+    gen_nifti_mrs(lipid_nmrs, dwelltime=TS, spec_freq=297.219,
+                  affine=affine).save(os.path.join(out_dir, "lipid_basis.nii.gz"))
+    print(f"[lipidrm] Saved lipid_basis.nii.gz  shape={lipid_nmrs.shape}")
+
     mrsi_fid_lprm_4d   = lipid_removal_l2(mrsi_fid_4d, lipid_basis, beta=args.lipid_beta)
     mrsi_lprm_4d       = FIDToSpec(mrsi_fid_lprm_4d, axis=-1)                   # (Ny,Nx,1,T) spectrum
 
