@@ -86,11 +86,12 @@ pip install git+https://github.com/JasonLvernex/SPICE_Margarita.git
 ### Dependencies
 
 - Python ≥ 3.12
-- NumPy, SciPy, Matplotlib
+- NumPy, SciPy, Matplotlib, scikit-learn
 - PyTorch + [torchkbnufft](https://github.com/mmuckley/torchkbnufft)
 - [finufft](https://finufft.readthedocs.io) + [mri-nufft](https://github.com/mind-inria/mri-nufft)
-- [FSL-MRS](https://open.win.ox.ac.uk/pages/fsl/fsl_mrs/) (conda install)
-- [NIfTI-MRS](https://github.com/wtclarke/nifti_mrs)
+- [FSL-MRS](https://open.win.ox.ac.uk/pages/fsl/fsl_mrs/) ≥ 2.4.15 (conda install)
+- [FSLeyes](https://open.win.ox.ac.uk/pages/fsl/fsleyes/fsleyes/) ≥ 1.19.0 (conda install) + [fsleyes-plugin-mrs](https://git.fmrib.ox.ac.uk/wclarke/fsleyes-plugin-mrs) ≥ 0.1.10
+- [NIfTI-MRS](https://github.com/wtclarke/nifti_mrs) ≥ 1.4.1
 - networkx, psutil, tqdm, nibabel
 
 ## Citation

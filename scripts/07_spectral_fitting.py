@@ -7,7 +7,7 @@ Reads  : <out_dir>/spice/SPICE_f.npy             (raw SPICE FID from step 04)
          <fit-basis-dir>/                         (FSL-MRS fitting basis)
 Writes : <out_dir>/fitting/spice_aligned.nii.gz  (xcorr freq-aligned NIfTI-MRS)
          <out_dir>/fitting/brain_mask.nii.gz
-         <out_dir>/fitting/spice_fit.nii.gz/      (fsl_mrsi output directory)
+         <out_dir>/fitting/spice_fit/              (fsl_mrsi output directory)
          <out_dir>/fitting/conc_maps.npy
          <out_dir>/fitting/fig_05_*.png
 
@@ -25,6 +25,7 @@ Usage:
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -273,7 +274,9 @@ def main():
     plt.close(fig_aln)
 
     # ── fsl_mrsi ──────────────────────────────────────────────────────────────
-    fsl_out = os.path.join(fit_dir, "spice_fit.nii.gz")
+    fsl_out = os.path.join(fit_dir, "spice_fit")
+    if os.path.exists(fsl_out):
+        shutil.rmtree(fsl_out)
     cmd = [
         "fsl_mrsi",
         "--data",     aligned_nii,
@@ -299,6 +302,34 @@ def main():
     print("[fitting/fsl_mrsi] Running:", " ".join(cmd))
     subprocess.run(cmd, env=os.environ.copy(), check=True)
     print(f"[fitting/fsl_mrsi] Done → {fsl_out}")
+
+    # ── Copy U / V / aligned into spice_fit/fit/ for FSLeyes filetree ────────
+    fit_subdir = os.path.join(fsl_out, "fit")
+    for fname, src in [
+        ("U_subspace.nii.gz",    os.path.join(spice_dir, "U_subspace.nii.gz")),
+        ("V_subspace.nii.gz",    os.path.join(spice_dir, "V_subspace.nii.gz")),
+        ("spice_aligned.nii.gz", aligned_nii),
+    ]:
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(fit_subdir, fname))
+            print(f"[fitting] Copied {fname} → {fit_subdir}")
+        else:
+            print(f"[warn] {src} not found, skipping")
+
+    # ── Patch mrsi.tree: add fit-aligned / fit-U / fit-V entries ─────────────
+    tree_path = os.path.join(fsl_out, "mrsi.tree")
+    if os.path.exists(tree_path):
+        with open(tree_path) as f:
+            tree_txt = f.read()
+        new_entries = (
+            "    spice_aligned.nii.gz                   (fit-aligned)\n"
+            "    U_subspace.nii.gz                      (fit-U)\n"
+            "    V_subspace.nii.gz                      (fit-V)\n"
+        )
+        tree_txt = tree_txt.replace("uncertainties\n", new_entries + "uncertainties\n")
+        with open(tree_path, "w") as f:
+            f.write(tree_txt)
+        print(f"[fitting] Patched mrsi.tree with fit-aligned / fit-U / fit-V")
 
     # ── Load & plot concentration maps ────────────────────────────────────────
     try:
