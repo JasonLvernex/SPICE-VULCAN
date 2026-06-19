@@ -8,10 +8,11 @@ Implements the method from:
 
 Pipeline (equations refer to the paper):
 
-  Stage 1 — Lipid-only subspace CG solve:
+  Stage 1 — Lipid-only subspace CG solve (Ma 2015 Eq.[6-7]):
     Fit U_lipid on the raw with-lipid k-t data (kt_mrsi_withlip_noring.npy)
-    using the lipid basis V_lipid from step 03.  W_lip diagonal prior keeps
-    U_lipid near zero in clean brain voxels.
+    using the lipid basis V_lipid from step 03.  W_L (diagonal, 1 in lipid
+    region / δ elsewhere) enters the forward model: F_B{W_L U_L V_L^H}.
+    Regularization is plain Tikhonov λ||U||².
 
   Stage 2 — Lipid k-space subtraction:
     y_metab = y_withlip - F{B0 * (U_lipid @ V_lipid.H)}
@@ -64,7 +65,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import binary_erosion
-from scipy.sparse import diags as sp_diags
 from scipy.sparse.linalg import cg, LinearOperator
 from tqdm import tqdm
 from warnings import filterwarnings
@@ -129,8 +129,8 @@ def parse_args():
     p.add_argument("--nsigma-gmm-inbrain", type=float, default=2.0)
     p.add_argument("--n-lipid-voxels-inbrain", type=int, default=2000)
     p.add_argument("--topn-fallback",   type=int,   default=100)
-    p.add_argument("--min-lip-penalty", type=float, default=0.001)
-    p.add_argument("--max-lip-penalty", type=float, default=1e2)
+    p.add_argument("--lip-delta",       type=float, default=0.01,
+                   help="δ in Ma 2015 Eq.[7]: W_L=δ outside lipid region (default 0.01)")
     # Misc
     p.add_argument("--wmax",            type=float, default=5e3)
     p.add_argument("--adj",             type=int,   default=8)
@@ -238,13 +238,11 @@ def main():
           f"n_contaminated={res_inbrain['n_selected']}")
 
     lipid_contam_mask = res_inbrain["lipid_mask"]
-    w_lip_vec = np.full(brain_mask.shape, args.max_lip_penalty, dtype=np.float32)
-    w_lip_vec[brain_mask & lipid_contam_mask] = args.min_lip_penalty
+    # Ma 2015 Eq.[7]: W_L = 1 inside lipid region, δ elsewhere
+    w_lip_vec = np.full(brain_mask.shape, args.lip_delta, dtype=np.float32)
+    w_lip_vec[lipid_contam_mask] = 1.0
     w_lip_vec = w_lip_vec.ravel()
     np.save(os.path.join(out_dir, "w_lip_vec.npy"), w_lip_vec)
-
-    W_lip  = sp_diags(w_lip_vec)
-    WW_lip = W_lip.conj().T @ W_lip
 
     ref_img_path = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
     try:
@@ -257,23 +255,46 @@ def main():
     # =========================================================================
     # Stage 1 -- lipid-only subspace CG solve on with-lipid k-t data
     # =========================================================================
-    print(f"[lam20] Stage 1: lipid-only SPICE  R_lip={R_lip}  "
-          f"lamda_lip={args.lamda_lip}  maxiter={args.maxiter_lip} ...")
+    print(f"[lam20] Stage 1: lipid CG (Ma 2015 Eq.[6-7])  R_lip={R_lip}  "
+          f"lamda_lip={args.lamda_lip}  lip_delta={args.lip_delta}  maxiter={args.maxiter_lip} ...")
 
-    _, U_lipid, _ = SPICEWithSpatialConstrain_cg_nufft(
-        noisy_kt_spaces = mrsi_withlip,
-        img_shape       = im_size,
-        F=F_OP, Gram_OP=Gram_OP, F1D_OP=F1D,
-        B0_mat=B0_mat, V=V_lipid,
-        N_Vox=N_VOXEL, NUM_SPICE_RANK=R_lip,
-        WW=WW_lip, Solver="cg",
-        lamda_1=args.lamda_lip, maxiter=args.maxiter_lip,
-        rtol=args.rtol_lip,
-        x0=np.zeros((N_VOXEL * R_lip,), dtype=D_TYPE),
-        save_folder=os.path.join(out_dir, "cg_iters_stage1"),
-        brain_mask_inner=brain_mask_inner,
-        PPM_AXIS=PPM_AXIS,
+    # W_L as a 1-D weight vector, applied inside the forward model per Eq.[7]:
+    #   forward: F_B{ W_L · U_L · V_L^H },  W_L diagonal (1 in lipid region, δ elsewhere)
+    # Normal equations: (W_L A^H A W_L + λI) U = W_L A^H s
+    #   where A = Ω F_B V_L, U is the pre-weight coefficient matrix.
+    w_l = w_lip_vec                          # shape (N_VOXEL,), already flattened
+    lam_l = np.float32(args.lamda_lip)
+
+    adj_y_lip  = F1D.rmatvec(F_OP.rmatvec(mrsi_withlip.ravel())).reshape(N_VOXEL, N_SEQ)
+    b_init_lip = (B0_mat.conj() * adj_y_lip).astype(D_TYPE)
+    b_lip_flat = (w_l[:, None] * (b_init_lip @ V_lipid)).ravel().astype(D_TYPE)
+
+    def mv_lip(u_vec):
+        U    = u_vec.reshape(N_VOXEL, R_lip)
+        WU   = w_l[:, None] * U                                          # W_L @ U
+        img  = B0_mat * (WU @ V_lipid.conj().T)                          # B0 · WU · V^H
+        gram = B0_mat.conj() * Gram_OP.matvec(img.ravel()).reshape(N_VOXEL, N_SEQ)
+        proj = gram @ V_lipid                                             # project to subspace
+        return (w_l[:, None] * proj + lam_l * U).ravel().astype(D_TYPE)  # W_L A^H A W_L + λI
+
+    A_lip = LinearOperator(
+        (N_VOXEL * R_lip, N_VOXEL * R_lip), matvec=mv_lip, dtype=D_TYPE
     )
+    iters_l = [0]
+    pbar_l  = tqdm(total=args.maxiter_lip, desc="CG lip", unit="iter")
+    def _cb_l(xk): iters_l[0] += 1; pbar_l.update(1)
+
+    u_lip_flat, cg_info_l = cg(
+        A_lip, b_lip_flat,
+        x0=np.zeros(N_VOXEL * R_lip, dtype=D_TYPE),
+        maxiter=args.maxiter_lip, rtol=args.rtol_lip,
+        callback=_cb_l,
+    )
+    pbar_l.close()
+    print(f"[lam20] Stage 1 done  cg_info={cg_info_l}  iters={iters_l[0]}")
+
+    # Actual spatial coefficients: C_L = W_L @ U_pre
+    U_lipid = (w_l[:, None] * u_lip_flat.reshape(N_VOXEL, R_lip)).astype(D_TYPE)
     np.save(os.path.join(out_dir, "U_lipid.npy"), U_lipid)
     print(f"[lam20] Stage 1 done.  U_lipid {U_lipid.shape}")
 

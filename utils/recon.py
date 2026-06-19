@@ -631,8 +631,27 @@ def phase_corr(
     mrsi_phcorr_f : phase-corrected FID, shape (Ny, Nx, npts)
     """
     from fsl_mrs.utils.preproc.mrsi import mrsi_phase_corr as _mrsi_phase_corr
+    import fsl_mrs.utils.preproc.mrsi as _mrsi_mod
     from fsl_mrs.core.nifti_mrs import gen_nifti_mrs
     from fsl.data.image import Image
+
+    # fsl_mrs phase_corr_max_real expects a 2-D array (N_fids, Nt) but
+    # iterate_over_spatial() passes a 1-D FID (Nt,) for each voxel, which
+    # causes a ValueError when the returned phase array is assigned back.
+    # Patch the module-level function so it reshapes 1-D input to (1, Nt)
+    # and unwraps the result, keeping phase correction valid per voxel.
+    _orig_pcmr = _mrsi_mod.phase_corr_max_real
+
+    def _patched_pcmr(fids, dwelltime, limits=None, apodization=0):
+        fids = np.asarray(fids)
+        if fids.ndim == 1:
+            phased, phases = _orig_pcmr(
+                fids[np.newaxis, :], dwelltime,
+                limits=limits, apodization=apodization)
+            return phased[0], phases[0]
+        return _orig_pcmr(fids, dwelltime, limits=limits, apodization=apodization)
+
+    _mrsi_mod.phase_corr_max_real = _patched_pcmr
 
     Ny, Nx = img_shape[0], img_shape[1]
 

@@ -11,12 +11,13 @@ Writes : <out_dir>/b0map/B0_map.npy   (= B0_map_pk.npy)
          <out_dir>/b0map/fig_02*.png   (when --save-plots)
 
 Usage:
-    python scripts/02_B0_map_estimation.py \\
-        --data-dir  ./data/ \\
-        --basis-dir ./basis/ \\
-        --out-dir   ./output \\
-        --dim 64 64 --n-seq-points 300 --k-points 39842 \\
-        [--save-plots]
+    python scripts/02_B0_map_estimation.py \
+        --data-dir  ./data/ \
+        --basis-dir ./basis/ \
+        --out-dir   ./output \
+        --dim 64 64 --n-seq-points 300 --k-points 39842 \
+        --save-plots \
+        --phase-method max-real
 """
 
 import argparse
@@ -59,7 +60,7 @@ def parse_args():
     p.add_argument("--brain-erosion",   type=int,   default=3)
     p.add_argument("--phase-ppmlim",    type=float, nargs=2, default=[0.0, 7.0], metavar=("LO", "HI"))
     p.add_argument("--phase-method",    type=str,   default=None,
-                   help="Phase correction method passed to fsl_mrs: 'max_real' or 'phasta' (default: None = fsl_mrs default)")
+                   help="Phase correction method passed to fsl_mrs: 'max-real' or 'phasta' (default: None = fsl_mrs default)")
     p.add_argument("--singlet-lw",      type=float, default=5.0)
     p.add_argument("--no-smooth",       action="store_true",
                    help="Skip Gaussian fill+smooth (notebook Cell 28 no-smooth option).")
@@ -232,20 +233,24 @@ def main():
     # ── Cell 13: phase correction via utils.recon.phase_corr ─────────────────
     # Notebook call: phase_corr(SpecToFID(image_blurry_numpy, axis=-1), mag_map_2d,
     #                           brain_mask, TS, (Ny, Nx), out_dir, ppmlim=(2,4), ref_img=ref_img)
-    print(f"[b0_corr] Phase correction  ppmlim={args.phase_ppmlim} …")
-    wref_fid     = SpecToFID(image_blurry_numpy, axis=-1)   # (Ny, Nx, T) FID
-    wref_phcorr_f = phase_corr(
-        wref_fid,
-        mag_map_2d = mag_map_2d,
-        brain_mask = brain_mask,
-        TS         = TS,
-        img_shape  = (Ny, Nx),
-        out_dir    = out_dir,
-        ppmlim     = tuple(args.phase_ppmlim),
-        ref_img    = ref_img_obj,
-        out_fname  = "wref_phcorr_nifti",
-        method     =  phase_method,
-    )
+    wref_fid = SpecToFID(image_blurry_numpy, axis=-1)   # (Ny, Nx, T) FID
+    if phase_method is not None and phase_method.lower() == 'none':
+        print("[b0_corr] Phase correction skipped (--phase-method none).")
+        wref_phcorr_f = wref_fid
+    else:
+        print(f"[b0_corr] Phase correction  ppmlim={args.phase_ppmlim} …")
+        wref_phcorr_f = phase_corr(
+            wref_fid,
+            mag_map_2d = mag_map_2d,
+            brain_mask = brain_mask,
+            TS         = TS,
+            img_shape  = (Ny, Nx),
+            out_dir    = out_dir,
+            ppmlim     = tuple(args.phase_ppmlim),
+            ref_img    = ref_img_obj,
+            out_fname  = "wref_phcorr_nifti",
+            method     = phase_method,
+        )
     # wref_phcorr_f: (Ny, Nx, T) — conjugated phase-corrected FID (matches notebook)
     wref_phcorr = FIDToSpec(np.array(wref_phcorr_f), axis=-1)   # spectrum for plotting
 

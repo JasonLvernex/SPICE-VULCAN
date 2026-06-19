@@ -17,7 +17,7 @@ Usage:
     python scripts/03_lipid_removal.py \
         --data-dir        ./data/ \
         --out-dir         ./output \
-        --k-points        39842 \
+        --k-points        39762 \
         --n-seq-points    300 \
         --n-coils         32 \
         --dim             64 64 \
@@ -31,7 +31,7 @@ Usage:
         --phase-ppmlim    3.5 3.9 \
         --plot-voxel      41 24 \
         --save-plots \
-        --phase-method max-real
+        --phase-method none
 
 """
 
@@ -63,7 +63,7 @@ def parse_args():
     p.add_argument("--data-dir",         required=True)
     p.add_argument("--out-dir",          default="./output")
     p.add_argument("--dwelltime",        type=float, default=5e-6)
-    p.add_argument("--k-points",         type=int,   default=39842)
+    p.add_argument("--k-points",         type=int,   default=39762)
     p.add_argument("--n-seq-points",     type=int,   default=300)
     p.add_argument("--n-coils",          type=int,   default=32)
     p.add_argument("--dim",              type=int,   nargs=2, default=[64, 64], metavar=("NX", "NY"))
