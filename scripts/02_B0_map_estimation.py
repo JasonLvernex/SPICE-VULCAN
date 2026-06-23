@@ -12,12 +12,12 @@ Writes : <out_dir>/b0map/B0_map.npy   (= B0_map_pk.npy)
 
 Usage:
     python scripts/02_B0_map_estimation.py \
-        --data-dir  ./data/ \
+        --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
-        --out-dir   ./output \
         --dim 64 64 --n-seq-points 300 --k-points 39842 \
         --save-plots \
         --phase-method max-real
+        [--brain-threshold 0.16]
 """
 
 import argparse
@@ -40,23 +40,27 @@ from fsl_mrs.core.mrs import MRS, Basis
 from fsl.data.image import Image
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
+from utils.pipeline_utils import try_symlink_shared_output, make_brain_mask
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="B0 map estimation — step 2")
     p.add_argument("--data-dir",        required=True)
     p.add_argument("--basis-dir",       required=True)
-    p.add_argument("--out-dir",         default="./output")
-    p.add_argument("--dwelltime",       type=float, default=5e-6)
-    p.add_argument("--k-points",        type=int,   default=39842)
+    p.add_argument("--out-dir",         default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
+    p.add_argument("--dwelltime",       type=float, default=None)
+    p.add_argument("--k-points",        type=int, default=None)
     p.add_argument("--n-seq-points",    type=int,   default=300)
-    p.add_argument("--n-coils",         type=int,   default=32)
+    p.add_argument("--n-coils",         type=int, default=None)
     p.add_argument("--dim",             type=int,   nargs=2, default=[64, 64], metavar=("NX", "NY"))
-    p.add_argument("--center-freq",     type=float, default=297.219338)
+    p.add_argument("--center-freq",     type=float, default=None)
     p.add_argument("--ppm-center",      type=float, default=3.027)
     p.add_argument("--ksp-scale",       type=float, default=None)
-    p.add_argument("--brain-threshold", type=float, default=0.002)
+    p.add_argument("--brain-threshold", type=float, default=0.07,
+                   help="Normalized wref_o threshold for brain mask (default 0.07)")
     p.add_argument("--brain-erosion",   type=int,   default=3)
     p.add_argument("--phase-ppmlim",    type=float, nargs=2, default=[0.0, 7.0], metavar=("LO", "HI"))
     p.add_argument("--phase-method",    type=str,   default=None,
@@ -131,6 +135,13 @@ def make_singlet_fid(PPM_CENTER, center_freq, TIME_AXIS, linewidth_hz=5.0):
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_wref")
+
+    if try_symlink_shared_output(data_dir, args.out_dir, "b0map"):
+        return
+
     out_dir  = os.path.join(args.out_dir, "b0map")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -215,15 +226,16 @@ def main():
                               os.path.join(out_dir, "fig_02a_adjnufft_raw.png"))
         print("[b0_corr] Saved fig_02a_adjnufft_raw.png")
 
-    # ── Cell 9: brain mask ────────────────────────────────────────────────────────
-    brain_mask       = mag_map_2d > args.brain_threshold
-    brain_mask_inner = binary_erosion(brain_mask, iterations=args.brain_erosion)
+    # ── Cell 9: brain mask (normalised wref_o) ───────────────────────────────────
+    wref_o_img  = np.load(data_dir + "wref_o.npy", mmap_mode="r")
+    wref_norm, brain_mask, brain_mask_inner = make_brain_mask(
+        wref_o_img, args.brain_threshold, args.brain_erosion)
 
     if args.save_plots:
         fig, ax = plt.subplots(figsize=(6, 5))
-        im = ax.imshow(np.abs(mag_map_2d), origin="lower", cmap="gray")
+        im = ax.imshow(wref_norm, origin="lower", cmap="gray")
         ax.imshow(brain_mask, origin="lower", cmap="Reds", alpha=0.35)
-        ax.set_title(f"Magnitude + brain mask (thr={args.brain_threshold:.3g})")
+        ax.set_title(f"wref_o (norm) + brain mask (thr={args.brain_threshold:.3g})")
         plt.colorbar(im, ax=ax)
         plt.tight_layout()
         fig.savefig(os.path.join(out_dir, "fig_02b_brain_mask.png"), dpi=120)

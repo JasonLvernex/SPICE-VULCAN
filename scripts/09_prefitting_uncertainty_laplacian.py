@@ -31,17 +31,15 @@ Writes : <out_dir>/uncertainty/fig_09_uncert_map.png
 Usage:
     # voxelwise (default) — requires step 08 hessian outputs
     python scripts/09_prefitting_uncertainty_laplacian.py \
-        --data-dir  ./data/ \
-        --out-dir   ./output \
-        --hess-dir  ./output/hessian \
+        --data-dir  data/processed/invivo_250305_01 \
+        --hess-dir  output/invivo_250305_01/hessian \
         --rank 20 --n-samples 100
 
     # lobpcg — requires step 10 LOBPCG outputs
     python scripts/09_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
-        --data-dir    ./data/ \
-        --out-dir     ./output \
-        --lobpcg-dir  ./output/lobpcg \
+        --data-dir    data/processed/invivo_250305_01 \
+        --lobpcg-dir  output/invivo_250305_01/lobpcg \
         --rank 20 --n-samples 100
 """
 
@@ -62,6 +60,7 @@ from tqdm import tqdm
 from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 
 D_TYPE = np.complex64
 
@@ -250,7 +249,8 @@ def parse_args():
                    default="voxelwise",
                    help="voxelwise: Laplace/mHm approach; lobpcg: load Q/vals from step 10")
     p.add_argument("--data-dir",       required=True)
-    p.add_argument("--out-dir",        default="./output")
+    p.add_argument("--out-dir",        default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--hess-dir",       default=None,
                    help="[voxelwise] Directory with mHm_*.npy (default: <out-dir>/hessian)")
     p.add_argument("--lobpcg-dir",     default=None,
@@ -258,12 +258,12 @@ def parse_args():
                         "(default: <out-dir>/lobpcg)")
     p.add_argument("--sigma2",         type=float, default=1.0,
                    help="[lobpcg] Posterior variance scale; overridden by sigma_noise.npy if found")
-    p.add_argument("--dwelltime",      type=float, default=5e-6)
-    p.add_argument("--k-points",       type=int,   default=39762)
+    p.add_argument("--dwelltime",      type=float, default=None)
+    p.add_argument("--k-points",       type=int, default=None)
     p.add_argument("--n-seq-points",   type=int,   default=300)
     p.add_argument("--dim",            type=int,   nargs=2, default=[64, 64],
                    metavar=("NY", "NX"))
-    p.add_argument("--center-freq",    type=float, default=297.219338)
+    p.add_argument("--center-freq",    type=float, default=None)
     p.add_argument("--ppm-center",     type=float, default=3.027)
     p.add_argument("--rank",           type=int,   default=20)
     p.add_argument("--brain-threshold",type=float, default=0.08)
@@ -329,6 +329,9 @@ def _save_plots(std_img, mean_spec, im_size, brain_mask, PPM_AXIS, args, out_dir
 def main():
     args      = parse_args()
     data_dir  = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     spice_dir = os.path.join(args.out_dir, "spice")
     out_dir   = os.path.join(args.out_dir, "uncertainty")
     os.makedirs(out_dir, exist_ok=True)

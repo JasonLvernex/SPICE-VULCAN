@@ -26,6 +26,7 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "psutil>=7.2.2",
     "tqdm>=4.67.3",
+    "pypulseq>=1.5.0",
 ]
 
 [tool.setuptools.packages.find]

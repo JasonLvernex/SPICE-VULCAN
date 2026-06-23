@@ -14,10 +14,9 @@ Writes : <out_dir>/fitting/spice_aligned.nii.gz  (xcorr freq-aligned NIfTI-MRS)
 
 Usage:
     python scripts/07_spectral_fitting.py \
-        --data-dir      ./data/ \
+        --data-dir      data/processed/invivo_250305_01 \
         --basis-dir     ./basis/ \
-        --out-dir       ./output \
-        --spice-npy     ./output/spice_refit_uoss/SPICE_refit_f.npy \
+        --spice-npy     output/invivo_250305_01/spice_refit_uoss/SPICE_refit_f.npy \
         --dim 64 64 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
         [--plot-metabs NAA Cr Ins Glu PCh]
@@ -50,6 +49,7 @@ from fsl.data.image import Image
 # project root → utils package + xcorr
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+from utils.scan_params import load_scan_params
 
 from utils.xcorr import my_mrsi_freq_align
 from utils.utils import plot_voxel_spectrum_and_maps
@@ -129,7 +129,8 @@ def parse_args():
                    help="Training basis dir (same as step 04; used to build basis_nmrs for xcorr)")
     p.add_argument("--fit-basis-dir",    default=None,
                    help="Fitting basis directory for fsl_mrsi (defaults to --basis-dir)")
-    p.add_argument("--out-dir",          default="./output")
+    p.add_argument("--out-dir",          default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--spice-npy",        default=None,
                    help="Path to SPICE FID .npy (overrides default "
                         "<out_dir>/spice/SPICE_f.npy; use for 04c output: "
@@ -137,10 +138,10 @@ def parse_args():
     p.add_argument("--ref-nii",          default=None,
                    help="Reference NIfTI for affine (optional)")
     # Spectral / acquisition (must match step 04)
-    p.add_argument("--dwelltime",        type=float, default=5e-6)
-    p.add_argument("--k-points",         type=int,   default=39842)
+    p.add_argument("--dwelltime",        type=float, default=None)
+    p.add_argument("--k-points",         type=int, default=None)
     p.add_argument("--n-seq-points",     type=int,   default=300)
-    p.add_argument("--center-freq",      type=float, default=297.219338)
+    p.add_argument("--center-freq",      type=float, default=None)
     p.add_argument("--ppm-center",       type=float, default=3.027)
     p.add_argument("--dim",              type=int,   nargs=2, default=[64, 64],
                    metavar=("NY", "NX"))
@@ -173,6 +174,9 @@ def main():
     args = parse_args()
 
     data_dir      = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     spice_dir     = os.path.join(args.out_dir, "spice")
     fit_dir       = os.path.join(args.out_dir, "fitting")
     fit_basis_dir = args.fit_basis_dir or args.basis_dir

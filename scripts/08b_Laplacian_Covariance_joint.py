@@ -43,9 +43,8 @@ Writes : <hess_dir>/mHm_joint_{vox}.npy   (R_total x R_total)
 
 Usage:
     python scripts/08b_Laplacian_Covariance_joint.py \
-        --data-dir  ./data/ \
-        --out-dir   ./output \
-        --hess-dir  ./output/hessian_joint \
+        --data-dir  data/processed/invivo_250305_01 \
+        --hess-dir  output/invivo_250305_01/hessian_joint \
         --lambda1 1e-4 --lamda-lip 1e-6 --wmax 5e3 --adj 8 --pool-size 1 \
         --max-workers 8 \
         [--vox-start 0 --vox-end 100]
@@ -74,6 +73,7 @@ from scipy.sparse.linalg import LinearOperator, cg
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 from utils.utils import calc_Bmatrix, Calc_B0_matrix, build_gram_for_worker
 
 D_TYPE   = np.complex64
@@ -231,16 +231,17 @@ def solve_one_voxel(vox_idx):
 def parse_args():
     p = argparse.ArgumentParser(description="Joint-refit Hessian uncertainty — step 8b")
     p.add_argument("--data-dir",      required=True)
-    p.add_argument("--out-dir",       default="./output")
+    p.add_argument("--out-dir",       default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--hess-dir",      default=None,
                    help="Output directory for mHm_*.npy (default: <out-dir>/hessian_joint)")
     p.add_argument("--backend",       default="torchnufft",
                    choices=["torchnufft", "finufft"],
                    help="NUFFT backend: torchnufft (default) or finufft")
-    p.add_argument("--dwelltime",     type=float, default=5e-6)
-    p.add_argument("--k-points",      type=int,   default=39762)
+    p.add_argument("--dwelltime",     type=float, default=None)
+    p.add_argument("--k-points",      type=int, default=None)
     p.add_argument("--n-seq-points",  type=int,   default=300)
-    p.add_argument("--n-coils",       type=int,   default=32)
+    p.add_argument("--n-coils",       type=int, default=None)
     p.add_argument("--dim",           type=int,   nargs=2, default=[64, 64], metavar=("NY", "NX"))
     # Regularization — MUST match the actual 04b run
     p.add_argument("--lambda1",       type=float, default=1e-4,
@@ -269,6 +270,9 @@ def parse_args():
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")

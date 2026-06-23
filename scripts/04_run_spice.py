@@ -19,14 +19,15 @@ Writes : <out_dir>/spice/SPICE_result.nii.gz
 
 Usage:
     # torchnufft (default)
-    python scripts/04_run_spice.py \\
-        --data-dir ./data/ --basis-dir ./basis/ \\
+    python scripts/04_run_spice.py \
+        --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
+        --save-plots [--brain-threshold 0.16] [--brain-erosion 1] \
         [--backend torchnufft] [--rank 20] [--lambda1 1e-4] [--maxiter 120]
 
     # finufft
-    python scripts/04_run_spice.py \\
-        --data-dir ./data/ --basis-dir ./basis/ \\
-        --backend finufft [--rank 15] [--lambda1 1e-6] [--maxiter 120]
+    python scripts/04_run_spice.py \
+        --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
+        --backend finufft [--rank 15] [--lambda1 1e-4] [--maxiter 120]
 """
 
 import argparse
@@ -50,6 +51,8 @@ from fsl.data.image import Image
 from nifti_mrs.create_nmrs import gen_nifti_mrs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
+from utils.pipeline_utils import make_brain_mask
 from utils.utils import (
     calc_Bmatrix,
     save_training_data_as_csv,
@@ -71,16 +74,17 @@ def parse_args():
     p = argparse.ArgumentParser(description="SPICE reconstruction — step 4")
     p.add_argument("--data-dir",        required=True)
     p.add_argument("--basis-dir",       required=True)
-    p.add_argument("--out-dir",         default="./output")
+    p.add_argument("--out-dir",         default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--backend",         default="torchnufft",
                    choices=["torchnufft", "finufft"],
                    help="NUFFT backend: torchnufft (default) or finufft")
-    p.add_argument("--dwelltime",       type=float, default=5e-6)
-    p.add_argument("--k-points",        type=int,   default=39762)
+    p.add_argument("--dwelltime",       type=float, default=None)
+    p.add_argument("--k-points",        type=int, default=None)
     p.add_argument("--n-seq-points",    type=int,   default=300)
-    p.add_argument("--n-coils",         type=int,   default=32)
+    p.add_argument("--n-coils",         type=int, default=None)
     p.add_argument("--dim",             type=int,   nargs=2, default=[64, 64], metavar=("NX","NY"))
-    p.add_argument("--center-freq",     type=float, default=297.219338)
+    p.add_argument("--center-freq",     type=float, default=None)
     p.add_argument("--ppm-center",      type=float, default=3.027)
     p.add_argument("--n-shots",         type=int,   default=360,
                    help="Number of shots (torchnufft only, default: 360)")
@@ -96,7 +100,6 @@ def parse_args():
     # Training
     p.add_argument("--training-size",   type=int,   default=10000)
     p.add_argument("--csv-name",        default="SS_training")
-    p.add_argument("--reuse-training",  action="store_true")
     # Metabolites
     p.add_argument("--metabs",          nargs="+",
                    default=["Cr","GABA","Glu","Gln","GPC","GSH",
@@ -111,6 +114,9 @@ def parse_args():
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     out_dir  = os.path.join(args.out_dir, "spice")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -170,10 +176,8 @@ def main():
     smap_time = coil_smap.squeeze(0)   # (C, Ny, Nx, T)
 
     # ── Brain mask ───────────────────────────────────────────────────────────────
-    wref_2d   = np.abs(wref_img.squeeze(-1))
-    wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
-    brain_mask       = wref_norm > args.brain_threshold
-    brain_mask_inner = binary_erosion(brain_mask, iterations=args.brain_erosion)
+    wref_norm, brain_mask, brain_mask_inner = make_brain_mask(
+        wref_img, args.brain_threshold, args.brain_erosion)
 
     # ── Build NUFFT operators ─────────────────────────────────────────────────────
     F_OP, Gram_OP, F1D, device_str = build_nufft_ops(
@@ -233,10 +237,10 @@ def main():
         plt.close("all")
 
     # ── Subspace training ────────────────────────────────────────────────────────
-    csv_path = os.path.join(out_dir, args.csv_name + ".csv")
-    if args.reuse_training and os.path.exists(csv_path):
+    csv_path = os.path.join(args.basis_dir, args.csv_name + ".csv")
+    if os.path.exists(csv_path):
         print(f"[spice] Loading existing training data: {csv_path}")
-        training_dataset = read_training_data_from_csv(out_dir, args.csv_name).astype(D_TYPE)
+        training_dataset = read_training_data_from_csv(args.basis_dir, args.csv_name).astype(D_TYPE)
     else:
         print(f"[spice] Generating {args.training_size} synthetic training samples …")
         rng      = np.random.default_rng()
@@ -249,7 +253,7 @@ def main():
             args.training_size, freq_shift=train_fs, whole_shift=train_ws,
             N_SEQ_POINTS=N_SEQ,
         ).astype(D_TYPE)
-        save_training_data_as_csv(training_dataset, out_dir, args.csv_name, savecondition=True)
+        save_training_data_as_csv(training_dataset, args.basis_dir, args.csv_name, savecondition=True)
 
     print(f"[spice] SVD of training data {training_dataset.shape} …")
     _, s, Vh = np.linalg.svd(training_dataset)
@@ -300,7 +304,7 @@ def main():
     print(f"[spice] Phase correction  ppmlim={args.phase_ppmlim} …")
     spice_phcorr_f = phase_corr(
         spice_3d,
-        mag_map_2d = wref_2d,
+        mag_map_2d = wref_norm,
         brain_mask = brain_mask_inner,
         TS         = TS,
         img_shape  = Dim_Voxel,

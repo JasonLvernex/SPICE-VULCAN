@@ -29,7 +29,8 @@ This codebase implements a full processing pipeline from raw k-space MRSI data t
 
 ```
 SPICE_MARGARITA/
-├── scripts/               # Numbered pipeline scripts (01–12)
+├── scripts/               # Pipeline scripts
+│   ├── data_proc_01_twix2npy.py     # Siemens twix (.dat) → .npy conversion; runs MORSE-PI for wref_o
 │   ├── 01_coil_correction.py        # [Optional] Coil sensitivity (MORSE-PI default; RNI with --method rni)
 │   ├── 02_B0_map_estimation.py      # B0 field map estimation
 │   ├── 03_lipid_removal.py          # L2-lipid suppression
@@ -39,7 +40,7 @@ SPICE_MARGARITA/
 │   ├── 07_spectral_fitting.py       # FSL-MRS spectral fitting
 │   ├── 08_Laplacian_Covariance.py   # Per-voxel Laplacian covariance matrix computation
 │   ├── 09_prefitting_uncertainty_laplacian.py  # Pre-fitting uncertainty (Laplacian)
-│   ├── 10_prefitting_uncertainty_lobpcg.py     # [Optional] Pre-fitting uncertainty (LOBPCG, optional)
+│   ├── 10_prefitting_uncertainty_lobpcg.py     # [Optional] Pre-fitting uncertainty (LOBPCG)
 │   ├── 11_analytical_conc_uncertainty.py       # Analytical concentration uncertainty
 │   └── 12_MC_conc_uncertainty.py               # [Optional] Monte Carlo concentration uncertainty
 ├── utils/                 # Core Python package
@@ -53,8 +54,10 @@ SPICE_MARGARITA/
 │   ├── simulation.py      # Synthetic B0 map and phantom simulation
 │   ├── coil_sens.py       # MORSE-PI coil sensitivity estimation
 │   ├── xcorr.py           # Cross-correlation frequency alignment
+│   ├── pipeline_utils.py  # Shared pipeline helpers (brain mask, symlink logic)
+│   ├── scan_params.py     # Scan parameter save/load utilities
 │   └── utils.py           # Backward-compatibility re-export shim
-├── basis/                 # Basis set (JSON metabolite definitions)
+├── basis/                 # Basis set (JSON metabolite definitions + SS_training.csv)
 ├── data/                  # Raw input data (gitignored; see data/README.md)
 ├── environment.yml        # Conda environment specification
 └── pyproject.toml         # Package metadata and pip dependencies

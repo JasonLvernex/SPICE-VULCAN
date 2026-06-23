@@ -15,8 +15,7 @@ Writes : <out_dir>/lipid_removal/kt_mrsi_lprm.npy
 
 Usage:
     python scripts/03_lipid_removal.py \
-        --data-dir        ./data/ \
-        --out-dir         ./output \
+        --data-dir        data/processed/invivo_250305_01 \
         --k-points        39762 \
         --n-seq-points    300 \
         --n-coils         32 \
@@ -54,27 +53,28 @@ from fsl_mrs.core.nifti_mrs import gen_nifti_mrs
 from fsl.data.image import Image
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
 from utils.lipid import compute_lss, select_lipid_mask_gmm_simple
+from utils.pipeline_utils import make_brain_mask
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="Lipid removal (GMM+L2 only) — step 3b")
     p.add_argument("--data-dir",         required=True)
-    p.add_argument("--out-dir",          default="./output")
-    p.add_argument("--dwelltime",        type=float, default=5e-6)
-    p.add_argument("--k-points",         type=int,   default=39762)
+    p.add_argument("--out-dir",          default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
+    p.add_argument("--dwelltime",        type=float, default=None)
+    p.add_argument("--k-points",         type=int, default=None)
     p.add_argument("--n-seq-points",     type=int,   default=300)
-    p.add_argument("--n-coils",          type=int,   default=32)
+    p.add_argument("--n-coils",          type=int, default=None)
     p.add_argument("--dim",              type=int,   nargs=2, default=[64, 64], metavar=("NX", "NY"))
-    p.add_argument("--center-freq",      type=float, default=297.219338)
+    p.add_argument("--center-freq",      type=float, default=None)
     p.add_argument("--ppm-center",       type=float, default=3.027)
     p.add_argument("--mrsi-ksp-scale",   type=float, default=None)
     # brain masks
-    p.add_argument("--brain-threshold",  type=float, default=0.00034,
-                   help="Raw wref threshold for lipid mask (default 0.00034)")
-    p.add_argument("--brain-threshold2", type=float, default=0.08,
-                   help="Normalized wref threshold for phase-corr / SPICE mask (default 0.08)")
+    p.add_argument("--brain-threshold",  type=float, default=0.07,
+                   help="Normalized wref_o threshold for brain mask (default 0.07)")
     p.add_argument("--brain-erosion",    type=int,   default=3)
     # lipid removal
     p.add_argument("--lss-ppm-low",      type=float, default=0.7)
@@ -138,6 +138,9 @@ def plot_mag_and_voxel(spec_4d, PPM_AXIS, voxel_row, voxel_col, title, fname):
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     out_dir  = os.path.join(args.out_dir, "lipid_removal")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -199,13 +202,9 @@ def main():
         ref_img_obj = None
         affine      = np.eye(4)
 
-    # ── Brain masks ───────────────────────────────────────────────────────────────
-    img_ref          = np.abs(wref_img[:, :, 0])
-    brain_nolip_mask = img_ref > args.brain_threshold             # raw (for lipid / save)
-
-    wref_2d   = np.abs(wref_img.squeeze(-1))
-    wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
-    brain_mask2      = wref_norm > args.brain_threshold2          # normalised (for phase-corr)
+    # ── Brain mask (single, normalised wref_o) ───────────────────────────────────
+    wref_norm, brain_nolip_mask, _ = make_brain_mask(
+        wref_img, args.brain_threshold, args.brain_erosion)
 
     # ── Save adj NUFFT before lipid removal (unmasked, lipid ring visible) ──────
     fid_adj = SpecToFID(image_blurry, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
@@ -243,6 +242,16 @@ def main():
     )
     lipid_mask = res["lipid_mask"]
     print(f"[lipidrm] Lipid mask: n={res['n_selected']}  method={res['method']}  thr={res['threshold']:.4e}")
+
+    if args.save_plots:
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.imshow(brain_nolip_mask, origin="lower", cmap="gray")
+        ax.set_title(f"brain_nolip_mask  (thr={args.brain_threshold:.2e})")
+        ax.axis("off")
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_dir, "fig_03a_brain_nolip_mask.png"), dpi=120)
+        plt.close(fig)
+        print("[lipidrm] Saved fig_03a_brain_nolip_mask.png")
 
     if args.save_plots:
         plot_mag_and_voxel(img_4d, PPM_AXIS, vr, vc,
@@ -309,7 +318,7 @@ def main():
         lpfree_phcorr_f = phase_corr(
             SpecToFID(mrsi_lprm_masked, axis=-1),   # (Ny, Nx, T) FID — from masked spectrum
             mag_map_2d = mag_map_2d,
-            brain_mask = brain_mask2,
+            brain_mask = brain_nolip_mask,
             TS         = TS,
             img_shape  = (Ny, Nx),
             out_dir    = out_dir,
@@ -358,7 +367,7 @@ def main():
         withlip_phcorr_f = phase_corr(
             SpecToFID(img_masked, axis=-1),
             mag_map_2d = mag_map_2d,
-            brain_mask = brain_mask2,
+            brain_mask = brain_nolip_mask,
             TS         = TS,
             img_shape  = (Ny, Nx),
             out_dir    = out_dir,

@@ -8,7 +8,7 @@ Two methods are available via --method (default: morse-pi):
       Estimates coil maps directly from non-Cartesian water-reference k-space
       using MORSE-PI (Multi-coil Optimal Reference Selection for Phase-Insensitive
       coil sensitivity estimation).
-      Ref: Lyu et al., ISMRM 2024, Abstract #4265.
+      Ref: Dymerska et al., ISMRM 2024, Abstract #4265.
            https://archive.ismrm.org/2024/4265.html
       Reads : <data_dir>/wref_data.npy, wref_ksp.npy, wref_o.npy
 
@@ -25,14 +25,14 @@ Both methods write: <out_dir>/coilmap/ecalib_pp.npy  (n_coils × Ny × Nx, compl
 Usage:
     # MORSE-PI (default)
     python scripts/01_coil_correction.py \
-        --data-dir ./data/ \
-        --n-ref 6 --max-iter 50 --calib-width 16 --save-plots\
-        [--out-dir ./output] [--dim 64 64]
+        --data-dir data/processed/invivo_250305_01 \
+        --n-ref 6 --max-iter 50 --calib-width 16 --save-plots \
+        [--out-dir output/invivo_250305_01] [--dim 64 64]
 
     # RNI (2D only)
     python scripts/01_coil_correction.py \
-        --data-dir ./data/ --method rni --save-plots \
-        [--out-dir ./output]
+        --data-dir data/processed/invivo_250305_01 --method rni --save-plots \
+        [--out-dir output/invivo_250305_01]
 """
 
 import argparse
@@ -49,7 +49,9 @@ from warnings import filterwarnings
 filterwarnings("ignore")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 from utils.coil_sens import morse_pi
+from utils.pipeline_utils import try_symlink_shared_output
 
 
 # ── RNI: phase-pole correction for ESPIRiT maps ───────────────────────────────
@@ -138,7 +140,8 @@ def parse_args():
     )
     p.add_argument("--data-dir",  required=True,
                    help="Raw data directory")
-    p.add_argument("--out-dir",   default="./output")
+    p.add_argument("--out-dir",   default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--method",    default="morse-pi", choices=["morse-pi", "rni"],
                    help="Coil sensitivity method: morse-pi (default) or rni. "
                         "WARNING: rni only supports 2D inputs.")
@@ -146,7 +149,7 @@ def parse_args():
     # Shared
     p.add_argument("--dim",             type=int, nargs=2, default=[64, 64],
                    metavar=("NY", "NX"))
-    p.add_argument("--n-coils",         type=int, default=32)
+    p.add_argument("--n-coils",         type=int, default=None)
     p.add_argument("--brain-threshold", type=float, default=5e-6)
     p.add_argument("--save-plots",      action="store_true")
 
@@ -180,6 +183,13 @@ def parse_args():
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir)
+
+    if try_symlink_shared_output(data_dir, args.out_dir, "coilmap"):
+        return
+
     out_dir  = os.path.join(args.out_dir, "coilmap")
     os.makedirs(out_dir, exist_ok=True)
     Ny, Nx  = args.dim[0], args.dim[1]
@@ -197,10 +207,21 @@ def main():
     img        = np.abs(wref_img[:, :, 0])
     brain_mask = img > args.brain_threshold
 
+    if args.save_plots:
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        im = ax.imshow(img, origin="lower", cmap="gray")
+        ax.imshow(brain_mask, origin="lower", cmap="Reds", alpha=0.35)
+        ax.set_title(f"wref_o |magnitude| + brain mask (thr={args.brain_threshold:.2e})")
+        plt.colorbar(im, ax=ax, fraction=0.046)
+        plt.tight_layout()
+        fig.savefig(os.path.join(out_dir, "fig_01f_brain_mask.png"), dpi=120)
+        plt.close(fig)
+        print("[step-01] Saved fig_01f_brain_mask.png")
+
     # ── Method dispatch ───────────────────────────────────────────────────────
     if args.method == "morse-pi":
         print(f"[step-01] Method: MORSE-PI  "
-              f"(Lyu et al., ISMRM 2024, #4265)")
+              f"(Dymerska et al., ISMRM 2024, #4265)")
         data, traj = _load_kspace_and_traj(data_dir, N_COILS, args.ksp_scale)
         print(f"[morse-pi] N_ref={args.n_ref}  smoothing_sd={args.smoothing_sd}  "
               f"max_iter={args.max_iter}  calib_width={args.calib_width}  "

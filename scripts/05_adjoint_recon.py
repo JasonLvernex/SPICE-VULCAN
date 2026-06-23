@@ -14,8 +14,7 @@ Outputs (in <out-dir>/adjoint_test/):
 
 Usage:
     python scripts/05_adjoint_recon.py \
-        --data-dir ./data/ \
-        --out-dir  ./output \
+        --data-dir data/processed/invivo_250305_01 \
         --rank 20 --dim 64 64 --n-seq-points 300 --k-points 39842
 """
 
@@ -44,6 +43,7 @@ from fsl_mrs.core.nifti_mrs import gen_nifti_mrs as gen_nifti_mrs_fsl
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+from utils.scan_params import load_scan_params
 from utils.xcorr import my_mrsi_freq_align
 from utils.utils import NUFFTOp, plot_voxel_spectrum_and_maps, read_training_data_from_csv, phase_corr, Calc_B0_matrix
 
@@ -51,14 +51,15 @@ from utils.utils import NUFFTOp, plot_voxel_spectrum_and_maps, read_training_dat
 def parse_args():
     p = argparse.ArgumentParser(description="Adjoint NUFFT diagnostic")
     p.add_argument("--data-dir",        required=True)
-    p.add_argument("--out-dir",         default="./output")
-    p.add_argument("--dwelltime",       type=float, default=5e-6)
-    p.add_argument("--k-points",        type=int,   default=39842)
+    p.add_argument("--out-dir",         default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
+    p.add_argument("--dwelltime",       type=float, default=None)
+    p.add_argument("--k-points",        type=int, default=None)
     p.add_argument("--n-seq-points",    type=int,   default=300)
-    p.add_argument("--n-coils",         type=int,   default=32)
+    p.add_argument("--n-coils",         type=int, default=None)
     p.add_argument("--n-shots",         type=int,   default=360)
     p.add_argument("--dim",             type=int,   nargs=2, default=[64, 64], metavar=("NX", "NY"))
-    p.add_argument("--center-freq",     type=float, default=297.219338)
+    p.add_argument("--center-freq",     type=float, default=None)
     p.add_argument("--ppm-center",      type=float, default=3.027)
     p.add_argument("--backend",         default="finufft", choices=["torchnufft", "finufft"])
     p.add_argument("--brain-threshold", type=float, default=0.08)
@@ -80,6 +81,9 @@ def parse_args():
 def main():
     args = parse_args()
     data_dir    = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
@@ -287,10 +291,10 @@ def main():
 
     # ── SVD from SS training dataset → V → project adjoint ───────────────────────
     spice_dir = os.path.join(args.out_dir, "spice")
-    csv_path  = os.path.join(spice_dir, args.csv_name + ".csv")
+    csv_path  = os.path.join(args.basis_dir, args.csv_name + ".csv")
     if os.path.exists(csv_path):
         print(f"[adj-test] Loading SS training data: {csv_path} …")
-        training_dataset = read_training_data_from_csv(spice_dir, args.csv_name).astype(np.complex64)
+        training_dataset = read_training_data_from_csv(args.basis_dir, args.csv_name).astype(np.complex64)
         print(f"[adj-test] training_dataset shape={training_dataset.shape}")
 
         print(f"[adj-test] SVD (rank={args.rank}) …")

@@ -34,10 +34,9 @@ Writes : <out_dir>/conc_uncertainty_analytical/
 
 Usage:
     python scripts/11_analytical_conc_uncertainty.py \
-        --data-dir  ./data/ \
+        --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
-        --out-dir   ./output \
-        --hess-dir  ./output/hessian \
+        --hess-dir  output/invivo_250305_01/hessian \
         --rank 20 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
         --plot-metabs NAA Cr Ins Glu PCh \
@@ -68,6 +67,7 @@ from fsl_mrs import models as fsl_models
 
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _root)
+from utils.scan_params import load_scan_params
 
 
 # ── SpecToFID (inverse of fsl_mrs FIDToSpec convention) ───────────────────────
@@ -170,16 +170,17 @@ def parse_args():
                    help="Scan data dir (contains wref_o.npy, sigma_noise.npy)")
     p.add_argument("--basis-dir",        required=True,
                    help="Fitting basis dir (same as used in step 05)")
-    p.add_argument("--out-dir",          default="./output")
+    p.add_argument("--out-dir",          default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--hess-dir",         default=None,
                    help="Dir with mHm_*.npy (default: <out-dir>/hessian)")
     p.add_argument("--fit-dir",          default=None,
                    help="fsl_mrsi output dir (default: <out-dir>/fitting/spice_fit.nii.gz)")
     # Acquisition (must match 04/05)
-    p.add_argument("--dwelltime",        type=float, default=5e-6)
-    p.add_argument("--k-points",         type=int,   default=39842)
+    p.add_argument("--dwelltime",        type=float, default=None)
+    p.add_argument("--k-points",         type=int, default=None)
     p.add_argument("--n-seq-points",     type=int,   default=300)
-    p.add_argument("--center-freq",      type=float, default=297.219338)
+    p.add_argument("--center-freq",      type=float, default=None)
     p.add_argument("--ppm-center",       type=float, default=3.027)
     p.add_argument("--dim",              type=int,   nargs=2, default=[64, 64],
                    metavar=("NY", "NX"))
@@ -217,6 +218,9 @@ def parse_args():
 def main():
     args     = parse_args()
     data_dir = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     spice_dir = os.path.join(args.out_dir, "spice")
     hess_dir  = args.hess_dir or os.path.join(args.out_dir, "hessian")
     fit_dir   = args.fit_dir  or os.path.join(args.out_dir, "fitting", "spice_fit.nii.gz")

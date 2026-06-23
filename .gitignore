@@ -45,3 +45,6 @@ scripts/04d_SPICE_lam20_refit.py
 # Temporary / intermediate files
 *.tmp
 *.log
+
+# Large training data — distribute manually
+basis/SS_training.csv

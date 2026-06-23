@@ -16,9 +16,8 @@ Writes : <hess_dir>/mHm_{vox}.npy  for each brain voxel
 
 Usage:
     python scripts/08_Laplacian_Covariance.py \
-        --data-dir  ./data/ \
-        --out-dir   ./output \
-        --hess-dir  ./output/hessian \
+        --data-dir  data/processed/invivo_250305_01 \
+        --hess-dir  output/invivo_250305_01/hessian \
         --rank 20 --lambda 1e-4 --max-workers 8 \
         [--vox-start 0 --vox-end 100]    # optional: parallelise over voxel ranges
 """
@@ -45,6 +44,7 @@ from scipy.sparse.linalg import LinearOperator, cg
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.scan_params import load_scan_params
 from utils.utils import (
     NUFFTOp, calc_Bmatrix, read_training_data_from_csv, Calc_B0_matrix_mx,
     build_gram_for_worker,
@@ -230,16 +230,17 @@ def solve_one_voxel(vox_idx):
 def parse_args():
     p = argparse.ArgumentParser(description="SPICE Hessian uncertainty — step 8")
     p.add_argument("--data-dir",      required=True)
-    p.add_argument("--out-dir",       default="./output")
+    p.add_argument("--out-dir",       default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
     p.add_argument("--backend",       default="torchnufft",
                    choices=["torchnufft", "finufft"],
                    help="NUFFT backend: torchnufft (default) or finufft")
     p.add_argument("--hess-dir",      default=None,
                    help="Output directory for mHm_*.npy (default: <out-dir>/hessian)")
-    p.add_argument("--dwelltime",     type=float, default=5e-6)
-    p.add_argument("--k-points",      type=int,   default=39762)
+    p.add_argument("--dwelltime",     type=float, default=None)
+    p.add_argument("--k-points",      type=int, default=None)
     p.add_argument("--n-seq-points",  type=int,   default=300)
-    p.add_argument("--n-coils",       type=int,   default=32)
+    p.add_argument("--n-coils",       type=int, default=None)
     p.add_argument("--dim",           type=int,   nargs=2, default=[64, 64], metavar=("NY", "NX"))
     p.add_argument("--rank",          type=int,   default=20,
                    help="SPICE subspace rank (must match 04_run_spice.py)")
@@ -250,8 +251,10 @@ def parse_args():
     p.add_argument("--pool-size",     type=int,   default=1)
     p.add_argument("--brain-threshold", type=float, default=0.08)
     p.add_argument("--brain-erosion",   type=int,   default=3)
+    p.add_argument("--basis-dir",     default="./basis",
+                   help="Shared basis directory (contains SS_training CSV)")
     p.add_argument("--csv-name",      default="SS_training",
-                   help="CSV filename in spice/ dir (fallback if V_subspace.npy absent)")
+                   help="CSV filename in basis/ dir (fallback if V_subspace.npy absent)")
     p.add_argument("--max-workers",   type=int,   default=8)
     p.add_argument("--cg-maxiter",    type=int,   default=300)
     p.add_argument("--cg-rtol",       type=float, default=1e-3)
@@ -268,6 +271,9 @@ def parse_args():
 def main():
     args       = parse_args()
     data_dir   = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
@@ -300,8 +306,8 @@ def main():
         V_full = np.load(v_path)                              # (N_SEQ, rank_saved)
         print(f"[uncert] Loaded V_subspace.npy  shape={V_full.shape}")
     else:
-        print(f"[uncert] V_subspace.npy not found, building from {args.csv_name}.csv …")
-        training = read_training_data_from_csv(spice_dir, args.csv_name).astype(D_TYPE)
+        print(f"[uncert] V_subspace.npy not found, building from {args.basis_dir}/{args.csv_name}.csv …")
+        training = read_training_data_from_csv(args.basis_dir, args.csv_name).astype(D_TYPE)
         _, _, vh = np.linalg.svd(training, full_matrices=False)
         V_full   = vh.conj().T                                # (N_SEQ, rank)
     V = V_full[:, :args.rank].astype(D_TYPE)                  # (N_SEQ, rank)

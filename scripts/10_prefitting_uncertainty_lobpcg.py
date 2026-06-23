@@ -19,8 +19,7 @@ Writes : <out_dir>/lobpcg/lobpcg_Q.npy          (eigenvectors, shape d×k)
 
 Usage:
     python scripts/10_prefitting_uncertainty_lobpcg.py \
-        --data-dir ./data/ \
-        --out-dir  ./output \
+        --data-dir data/processed/invivo_250305_01 \
         --rank 20 --k-eig 50 --n-samples 100 \
         [--damp 0.0] [--lobpcg-maxiter 200]
 """
@@ -50,7 +49,8 @@ from tqdm import tqdm
 from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.utils import NUFFTOp, calc_Bmatrix, read_training_data_from_csv, Calc_B0_matrix_mx, build_nufft_ops
+from utils.scan_params import load_scan_params
+from utils.utils import NUFFTOp, calc_Bmatrix, Calc_B0_matrix_mx, build_nufft_ops
 
 D_TYPE   = np.complex64
 T_D_TYPE = torch.complex64
@@ -234,13 +234,14 @@ def plot_average_variation(spice_test, img_shape, voxel_x, voxel_y,
 def parse_args():
     p = argparse.ArgumentParser(description="LOBPCG uncertainty — step 10")
     p.add_argument("--data-dir",        required=True)
-    p.add_argument("--out-dir",         default="./output")
-    p.add_argument("--dwelltime",       type=float, default=5e-6)
-    p.add_argument("--k-points",        type=int,   default=39762)
+    p.add_argument("--out-dir",         default=None,
+                   help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
+    p.add_argument("--dwelltime",       type=float, default=None)
+    p.add_argument("--k-points",        type=int, default=None)
     p.add_argument("--n-seq-points",    type=int,   default=300)
-    p.add_argument("--n-coils",         type=int,   default=32)
+    p.add_argument("--n-coils",         type=int, default=None)
     p.add_argument("--dim",             type=int,   nargs=2, default=[64, 64])
-    p.add_argument("--center-freq",     type=float, default=297.219338)
+    p.add_argument("--center-freq",     type=float, default=None)
     p.add_argument("--ppm-center",      type=float, default=3.027)
     p.add_argument("--rank",            type=int,   default=20)
     p.add_argument("--lambda",          type=float, default=1e-4, dest="lam")
@@ -277,6 +278,9 @@ def parse_args():
 def main():
     args      = parse_args()
     data_dir  = args.data_dir.rstrip("/") + "/"
+    if args.out_dir is None:
+        args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
+    load_scan_params(args, data_dir, k_key="k_mrsi")
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
