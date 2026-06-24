@@ -50,7 +50,7 @@ from fsl_mrs.utils.plotting import FID2Spec
 from fsl.data.image import Image
 from nifti_mrs.create_nmrs import gen_nifti_mrs
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.pipeline_utils import make_brain_mask
 from utils.utils import (

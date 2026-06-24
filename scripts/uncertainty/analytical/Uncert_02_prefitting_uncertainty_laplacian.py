@@ -59,7 +59,7 @@ from scipy.ndimage import binary_erosion
 from tqdm import tqdm
 from typing import Optional, Tuple
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 
 D_TYPE = np.complex64

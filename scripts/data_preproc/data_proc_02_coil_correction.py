@@ -48,7 +48,7 @@ from scipy import ndimage
 from warnings import filterwarnings
 filterwarnings("ignore")
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.coil_sens import morse_pi
 from utils.pipeline_utils import try_symlink_shared_output

@@ -39,7 +39,7 @@ from fsl_mrs.core.nifti_mrs import gen_nifti_mrs
 from fsl_mrs.core.mrs import MRS, Basis
 from fsl.data.image import Image
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
 from utils.pipeline_utils import try_symlink_shared_output, make_brain_mask

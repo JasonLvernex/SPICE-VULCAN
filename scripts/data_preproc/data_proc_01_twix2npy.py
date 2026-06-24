@@ -72,7 +72,7 @@ import numpy as np
 import pypulseq as pp
 from mrinufft.io.siemens import read_siemens_rawdat
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import save_scan_params
 from utils.coil_sens import morse_pi
 import mrinufft

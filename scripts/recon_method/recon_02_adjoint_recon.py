@@ -41,7 +41,7 @@ from fsl_mrs.utils.misc import FIDToSpec, SpecToFID
 from fsl_mrs.utils.synthetic import syntheticFromBasisFile
 from fsl_mrs.core.nifti_mrs import gen_nifti_mrs as gen_nifti_mrs_fsl
 
-_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 from utils.xcorr import my_mrsi_freq_align

@@ -52,7 +52,7 @@ from fsl_mrs.utils.misc import FIDToSpec, SpecToFID
 from fsl_mrs.core.nifti_mrs import gen_nifti_mrs
 from fsl.data.image import Image
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
 from utils.lipid import compute_lss, select_lipid_mask_gmm_simple

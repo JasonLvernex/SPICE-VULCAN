@@ -33,7 +33,7 @@ import matplotlib.ticker as mticker
 import nibabel as nib
 import numpy as np
 
-_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 from utils.pipeline_utils import make_brain_mask

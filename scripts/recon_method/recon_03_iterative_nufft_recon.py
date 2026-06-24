@@ -45,7 +45,7 @@ from fsl.data.image import Image
 from nifti_mrs.create_nmrs import gen_nifti_mrs
 from fsl_mrs.utils.misc import FIDToSpec
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.utils import (
     Calc_B0_matrix,

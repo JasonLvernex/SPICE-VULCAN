@@ -29,20 +29,28 @@ This codebase implements a full processing pipeline from raw k-space MRSI data t
 
 ```
 SPICE_MARGARITA/
-├── scripts/               # Pipeline scripts
-│   ├── data_proc_01_twix2npy.py     # Siemens twix (.dat) → .npy conversion; runs MORSE-PI for wref_o
-│   ├── 01_coil_correction.py        # [Optional] Coil sensitivity (MORSE-PI default; RNI with --method rni)
-│   ├── 02_B0_map_estimation.py      # B0 field map estimation
-│   ├── 03_lipid_removal.py          # L2-lipid suppression
-│   ├── 04_run_spice.py              # SPICE reconstruction with spatial regularization
-│   ├── 05_adjoint_recon.py          # [Optional] Adjoint NUFFT reconstruction (diagnostic)
-│   ├── 06_iterative_nufft_recon.py  # [Optional] Iterative NUFFT reconstruction (CG + B0 correction)
-│   ├── 07_spectral_fitting.py       # FSL-MRS spectral fitting
-│   ├── 08_Laplacian_Covariance.py   # Per-voxel Laplacian covariance matrix computation
-│   ├── 09_prefitting_uncertainty_laplacian.py  # Pre-fitting uncertainty (Laplacian)
-│   ├── 10_prefitting_uncertainty_lobpcg.py     # [Optional] Pre-fitting uncertainty (LOBPCG)
-│   ├── 11_analytical_conc_uncertainty.py       # Analytical concentration uncertainty
-│   └── 12_MC_conc_uncertainty.py               # [Optional] Monte Carlo concentration uncertainty
+├── scripts/
+│   ├── data_preproc/                   # Raw data → pre-processed arrays
+│   │   ├── data_proc_01_twix2npy.py    # Siemens twix (.dat) → .npy; MORSE-PI wref_o; saves affine.npy
+│   │   ├── data_proc_02_coil_correction.py   # [Optional] Coil sensitivity (MORSE-PI / RNI)
+│   │   ├── data_proc_03_B0_map_estimation.py # B0 field map estimation
+│   │   └── data_proc_04_lipid_removal.py     # L2-lipid suppression
+│   ├── recon_method/                   # MRSI reconstruction
+│   │   ├── recon_01_run_spice.py       # SPICE reconstruction with spatial regularization
+│   │   ├── recon_02_adjoint_recon.py   # [Optional] Adjoint NUFFT reconstruction (diagnostic)
+│   │   └── recon_03_iterative_nufft_recon.py # [Optional] Iterative NUFFT (CG + B0 correction)
+│   ├── specfitting/                    # Spectral fitting
+│   │   └── specfit_01_fsl_mrsi_fit.py  # xcorr alignment + FSL-MRS spectral fitting
+│   └── uncertainty/                    # Uncertainty quantification
+│       ├── analytical/                 # Laplacian / analytical methods
+│       │   ├── Uncert_01_Laplacian_Covariance.py            # Per-voxel Hessian mHm (HPC)
+│       │   ├── Uncert_02_prefitting_uncertainty_laplacian.py # Pre-fitting std (Laplacian / LOBPCG)
+│       │   ├── Uncert_03_prefitting_uncertainty_lobpcg.py   # Pre-fitting std (LOBPCG fast path)
+│       │   └── Uncert_04_analytical_conc_uncertainty.py     # Analytical concentration uncertainty
+│       └── MC/                         # Monte Carlo methods
+│           ├── Uncert_05_MC_conc_uncertainty.py   # MC conc. uncertainty (posterior samples)
+│           ├── Uncert_06_pair_conc_correlation.py # Pairwise concentration correlation
+│           └── Uncert_07_group_uncertainty.py     # Cross-subject group std (pre-fitting + conc)
 ├── utils/                 # Core Python package
 │   ├── recon.py           # NUFFT operators, SPICE solver, B0 correction, phase correction
 │   ├── fitting.py         # Nonlinear spectral fitting and MC basis fitting
