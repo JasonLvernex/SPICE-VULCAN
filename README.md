@@ -91,8 +91,13 @@ pip install -e .
 pip install git+https://github.com/JasonLvernex/SPICE_Margarita.git
 ```
 
+> **FSL-MRS / FSL platform note**
 > FSL-MRS requires a dedicated conda channel and cannot be installed via pip alone.
 > See `environment.yml` for the full conda setup.
+>
+> - **macOS / Linux**: the conda installation above works out of the box.
+> - **Windows**: FSL requires WSL2 or a compatibility layer — follow the official guide at
+>   https://fsl.fmrib.ox.ac.uk/fsl/docs/install/windows.html before running `conda env create`.
 
 ### Dependencies
 
