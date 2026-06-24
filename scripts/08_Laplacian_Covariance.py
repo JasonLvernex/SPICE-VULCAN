@@ -255,7 +255,7 @@ def parse_args():
                    help="Shared basis directory (contains SS_training CSV)")
     p.add_argument("--csv-name",      default="SS_training",
                    help="CSV filename in basis/ dir (fallback if V_subspace.npy absent)")
-    p.add_argument("--max-workers",   type=int,   default=8)
+    p.add_argument("--max-workers",   type=int,   default=4)
     p.add_argument("--cg-maxiter",    type=int,   default=300)
     p.add_argument("--cg-rtol",       type=float, default=1e-3)
     # voxel range — lets multiple cluster jobs run in parallel on different slices

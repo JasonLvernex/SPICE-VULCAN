@@ -466,7 +466,8 @@ def main():
     print(f"  wref_ksp  shape: {wref_ksp_npy.shape}")
     print(f"  wref_o    shape: {wref_o.shape}")
 
-    WREF_FILES = ["wref_data.npy", "wref_ksp.npy", "wref_o.npy", "sigma_noise.npy", "wref_o_check.png"]
+    WREF_FILES = ["wref_data.npy", "wref_ksp.npy", "wref_o.npy", "sigma_noise.npy", "wref_o_check.png",
+                  "affine.npy"]
 
     # ── 2. MRSI trajectory (read once; same seq for all files) ────────────────
     print("\n[twix2npy] Reading MRSI seq trajectory …")
@@ -516,8 +517,9 @@ def main():
             np.save(os.path.join(out_dir, "wref_ksp.npy"),   wref_ksp_npy)
             np.save(os.path.join(out_dir, "wref_o.npy"),     wref_o)
             np.save(os.path.join(out_dir, "sigma_noise.npy"), np.float32(sigma_noise))
+            np.save(os.path.join(out_dir, "affine.npy"),      pos_info['affine'].astype(np.float64))
             _save_wref_o_png(wref_o, out_dir)
-            print(f"  saved wref files")
+            print(f"  saved wref files + affine.npy")
         else:
             # subsequent subjects: symlink to first subject's wref files
             _symlink_wref(first_subj_dir, out_dir, WREF_FILES)

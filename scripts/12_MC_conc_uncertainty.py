@@ -363,13 +363,19 @@ def main():
     mean_U = est_U[:N_VOXEL, :args.rank].astype(D_TYPE)         # (N_vox, rank)
 
     # ── Reference affine ─────────────────────────────────────────────────────
-    ref_nii_path = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
-    try:
-        ref_img = Image(ref_nii_path)
-        affine  = ref_img.voxToWorldMat
-    except Exception:
-        ref_img = None
-        affine  = np.eye(4)
+    _affine_npy = data_dir + "affine.npy"
+    if args.ref_nii:
+        affine = Image(args.ref_nii).voxToWorldMat
+    elif os.path.exists(_affine_npy):
+        affine = np.load(_affine_npy)
+        print(f"[mc-fit] Loaded affine from {_affine_npy}")
+    else:
+        ref_nii_path = data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz"
+        try:
+            affine = Image(ref_nii_path).voxToWorldMat
+        except Exception:
+            affine = np.eye(4)
+            print("[mc-fit] WARNING: affine.npy not found; using identity")
 
     # ── Build xcorr reference (basis_nmrs) ───────────────────────────────────
     print("[mc-fit] Building xcorr reference basis …")
