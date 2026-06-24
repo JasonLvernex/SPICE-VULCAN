@@ -12,28 +12,33 @@ Averaged noise:  sigma_comb = sigma_noise / sqrt(N_selected)
 New folder name: <prefix>_comb_<id1>_<id2>_...
   e.g. invivo_260623_comb_01_02_03
 
-New folder contents:
+New folder contents (data/processed/<name>/):
   mrsi_data.npy      ← averaged (new, complex64)
   sigma_noise.npy    ← sigma_noise / sqrt(N)  (new)
-  mrsi_ksp.npy       ← symlink to subject 01
-  scan_params.json   ← symlink to subject 01
-  wref_data.npy      ← symlink to subject 01
-  wref_ksp.npy       ← symlink to subject 01
-  wref_o.npy         ← symlink to subject 01
-  wref_o_check.png   ← symlink to subject 01
-  affine.npy         ← symlink to subject 01
+  mrsi_ksp.npy       ← symlink to ref subject
+  scan_params.json   ← symlink to ref subject
+  wref_data.npy      ← symlink to ref subject
+  wref_ksp.npy       ← symlink to ref subject
+  wref_o.npy         ← symlink to ref subject
+  wref_o_check.png   ← symlink to ref subject
+  affine.npy         ← symlink to ref subject
+
+Also creates output/<name>/coilmap/ with ecalib_pp.npy symlinked from the
+ref subject's output coilmap (coil map is derived from shared wref data).
 
 Usage:
     # combine subjects 01 02 03
     python scripts/data_preproc/data_proc_05_combine_mrsi.py \
         --subject-ids 01 02 03 \
         --data-root   data/processed \
+        --out-root    output \
         --prefix      invivo_260623
 
     # combine all five
     python scripts/data_preproc/data_proc_05_combine_mrsi.py \
         --subject-ids 01 02 03 04 05 \
         --data-root   data/processed \
+        --out-root    output \
         --prefix      invivo_260623
 """
 
@@ -62,13 +67,15 @@ def parse_args():
     p.add_argument("--subject-ids", nargs="+", required=True,
                    help="Subject IDs to combine, e.g. 01 02 03")
     p.add_argument("--data-root",   default="data/processed",
-                   help="Root directory containing per-subject folders (default: data/processed)")
+                   help="Root for processed data folders (default: data/processed)")
+    p.add_argument("--out-root",    default="output",
+                   help="Root for pipeline output folders (default: output)")
     p.add_argument("--prefix",      default="invivo_260623",
                    help="Common folder prefix (default: invivo_260623)")
     p.add_argument("--ref-id",      default=None,
                    help="Subject ID to use as reference for symlinks (default: first in --subject-ids)")
     p.add_argument("--out-dir",     default=None,
-                   help="Override output directory path (default: <data-root>/<prefix>_comb_<ids>)")
+                   help="Override processed-data output path (default: <data-root>/<prefix>_comb_<ids>)")
     return p.parse_args()
 
 
@@ -136,7 +143,24 @@ def main():
         else:
             print(f"  [skip] {fname} not found in {ref_dir.name}")
 
-    print(f"\n[combine] Done.  Output: {out_dir}")
+    # ── Coilmap symlink in output directory ──────────────────────────────────
+    tag = out_dir.name          # e.g. invivo_260623_comb_01_02_03
+    coilmap_src  = Path(args.out_root) / f"{args.prefix}_{ref_id}" / "coilmap" / "ecalib_pp.npy"
+    coilmap_dir  = Path(args.out_root) / tag / "coilmap"
+    coilmap_link = coilmap_dir / "ecalib_pp.npy"
+
+    if coilmap_src.exists():
+        coilmap_dir.mkdir(parents=True, exist_ok=True)
+        if coilmap_link.exists() or coilmap_link.is_symlink():
+            coilmap_link.unlink()
+        target = os.path.relpath(str(coilmap_src), str(coilmap_dir))
+        coilmap_link.symlink_to(target)
+        print(f"[combine] output coilmap: ecalib_pp.npy -> {target}")
+    else:
+        print(f"[combine] [skip] coilmap not found at {coilmap_src} — run coil correction first")
+
+    print(f"\n[combine] Done.  Data:   {out_dir}")
+    print(f"[combine]         Output: {coilmap_dir.parent}")
     print(f"[combine] Run downstream pipeline as usual with --data-dir {out_dir}")
 
 
