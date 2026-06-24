@@ -13,7 +13,7 @@ Writes : <out_dir>/fitting/spice_aligned.nii.gz  (xcorr freq-aligned NIfTI-MRS)
          <out_dir>/fitting/fig_05_*.png
 
 Usage:
-    python scripts/07_spectral_fitting.py \
+    python scripts/specfitting/specfit_01_fsl_mrsi_fit.py \
         --data-dir      data/processed/invivo_250305_01 \
         --basis-dir     ./basis/ \
         --spice-npy     output/invivo_250305_01/spice_refit_uoss/SPICE_refit_f.npy \

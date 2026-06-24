@@ -19,13 +19,13 @@ Writes : <out_dir>/spice/SPICE_result.nii.gz
 
 Usage:
     # torchnufft (default)
-    python scripts/04_run_spice.py \
+    python scripts/recon_method/recon_01_run_spice.py \
         --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
         --save-plots [--brain-threshold 0.16] [--brain-erosion 1] \
         [--backend torchnufft] [--rank 20] [--lambda1 1e-4] [--maxiter 120]
 
     # finufft
-    python scripts/04_run_spice.py \
+    python scripts/recon_method/recon_01_run_spice.py \
         --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
         --backend finufft [--rank 15] [--lambda1 1e-4] [--maxiter 120]
 """

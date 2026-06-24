@@ -30,13 +30,13 @@ Writes : <out_dir>/uncertainty/fig_09_uncert_map.png
 
 Usage:
     # voxelwise (default) — requires step 08 hessian outputs
-    python scripts/09_prefitting_uncertainty_laplacian.py \
+    python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --data-dir  data/processed/invivo_250305_01 \
         --hess-dir  output/invivo_250305_01/hessian \
         --rank 20 --n-samples 100
 
     # lobpcg — requires step 10 LOBPCG outputs
-    python scripts/09_prefitting_uncertainty_laplacian.py \
+    python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
         --data-dir    data/processed/invivo_250305_01 \
         --lobpcg-dir  output/invivo_250305_01/lobpcg \

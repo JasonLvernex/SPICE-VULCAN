@@ -18,7 +18,7 @@ Writes : <out_dir>/lobpcg/lobpcg_Q.npy          (eigenvectors, shape d×k)
          <out_dir>/lobpcg/fig_10_uncert_map.png
 
 Usage:
-    python scripts/10_prefitting_uncertainty_lobpcg.py \
+    python scripts/uncertainty/analytical/Uncert_03_prefitting_uncertainty_lobpcg.py \
         --data-dir data/processed/invivo_250305_01 \
         --rank 20 --k-eig 50 --n-samples 100 \
         [--damp 0.0] [--lobpcg-maxiter 200]

@@ -32,7 +32,7 @@ Writes : <out_dir>/conc_uncertainty/
 
 Usage:
     # lobpcg mode (default — faster)
-    python scripts/12_MC_conc_uncertainty.py \
+    python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
         --data-dir      data/processed/invivo_250305_01 \
         --basis-dir     ./basis/ \
         --fit-basis-dir ./basis_fit/ \
@@ -42,7 +42,7 @@ Usage:
         --plot-metabs NAA Cr Ins Glu PCh
 
     # voxelwise mode
-    python scripts/12_MC_conc_uncertainty.py \
+    python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
         --hess-dir  output/invivo_250305_01/hessian \

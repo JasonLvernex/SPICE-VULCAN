@@ -33,7 +33,7 @@ Writes : <out_dir>/conc_uncertainty_analytical/
              fig_12_internal_std_<metab>.png
 
 Usage:
-    python scripts/11_analytical_conc_uncertainty.py \
+    python scripts/uncertainty/analytical/Uncert_04_analytical_conc_uncertainty.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
         --hess-dir  output/invivo_250305_01/hessian \

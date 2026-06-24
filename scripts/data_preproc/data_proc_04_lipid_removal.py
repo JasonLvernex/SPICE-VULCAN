@@ -14,7 +14,7 @@ Writes : <out_dir>/lipid_removal/kt_mrsi_lprm.npy
          <out_dir>/lipid_removal/fig_03b_*.png  (when --save-plots)
 
 Usage:
-    python scripts/03_lipid_removal.py \
+    python scripts/data_preproc/data_proc_04_lipid_removal.py \
         --data-dir        data/processed/invivo_250305_01 \
         --k-points        39762 \
         --n-seq-points    300 \

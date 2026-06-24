@@ -13,7 +13,7 @@ Outputs (in <out-dir>/adjoint_test/):
   fig_adj_center_voxel.png  — single center-voxel spectrum
 
 Usage:
-    python scripts/05_adjoint_recon.py \
+    python scripts/recon_method/recon_02_adjoint_recon.py \
         --data-dir data/processed/invivo_250305_01 \
         --rank 20 --dim 64 64 --n-seq-points 300 --k-points 39842
 """

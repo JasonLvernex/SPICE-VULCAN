@@ -22,7 +22,7 @@ Writes : <out_dir>/iter_recon/iter_recon.nii.gz         (FID, NIfTI-MRS)
          <out_dir>/iter_recon/fig_06_*.png
 
 Usage:
-    python scripts/06_iterative_nufft_recon.py \
+    python scripts/recon_method/recon_03_iterative_nufft_recon.py \
         --data-dir data/processed/invivo_250305_01 \
         [--maxiter 150] [--solver cg]
 """

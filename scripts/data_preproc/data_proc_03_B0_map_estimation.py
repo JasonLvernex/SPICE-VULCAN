@@ -11,7 +11,7 @@ Writes : <out_dir>/b0map/B0_map.npy   (= B0_map_pk.npy)
          <out_dir>/b0map/fig_02*.png   (when --save-plots)
 
 Usage:
-    python scripts/02_B0_map_estimation.py \
+    python scripts/data_preproc/data_proc_03_B0_map_estimation.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
         --dim 64 64 --n-seq-points 300 --k-points 39842 \

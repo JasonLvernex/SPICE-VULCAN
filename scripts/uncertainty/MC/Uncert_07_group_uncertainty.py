@@ -12,7 +12,7 @@ Concentration uncertainty (both raw and internal):
     → output/group_260623/conc_std_internal.npy (Ny, Nx, n_metab)
 
 Usage:
-    python scripts/14_group_uncertainty.py \
+    python scripts/uncertainty/MC/Uncert_07_group_uncertainty.py \
         --subjects invivo_260623_01 invivo_260623_02 invivo_260623_03 invivo_260623_04 invivo_260623_05 \
         --out-dir output/group_260623 \
         --dim 64 64 \

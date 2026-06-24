@@ -29,7 +29,7 @@ File layout
         invivo_260623_01/       ← created by pipeline scripts 01-12
 
 Usage:
-    python scripts/data_proc_01_twix2npy.py \
+    python scripts/data_preproc/data_proc_01_twix2npy.py \
         --raw-dir data/raw/invivo_260623 \
         --out-prefix data/processed/invivo_260623 \
         --mrsi-dat meas_MID00066_FID92027_MRSI_64_cr_1.dat \
@@ -546,7 +546,7 @@ def main():
     print(f"  subjects:          {len(args.mrsi_dat)}")
     print()
     print("Next steps — run pipeline scripts with e.g.:")
-    print(f"  python scripts/01_coil_correction.py --data-dir {args.out_prefix}_01")
+    print(f"  python scripts/data_preproc/data_proc_02_coil_correction.py --data-dir {args.out_prefix}_01")
 
 
 if __name__ == "__main__":

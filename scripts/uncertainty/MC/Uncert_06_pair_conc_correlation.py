@@ -22,7 +22,7 @@ Writes : <out_dir>/pair_conc_correlation/
              pair_correlation_summary.csv
 
 Usage:
-    python scripts/13_pair_conc_correlation.py \
+    python scripts/uncertainty/MC/Uncert_06_pair_conc_correlation.py \
         --data-dir data/processed/invivo_250305_01 \
         --basis-dir ./basis
 """

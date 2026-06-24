@@ -15,7 +15,7 @@ Reads  : <data_dir>/wref_o.npy
 Writes : <hess_dir>/mHm_{vox}.npy  for each brain voxel
 
 Usage:
-    python scripts/08_Laplacian_Covariance.py \
+    python scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py \
         --data-dir  data/processed/invivo_250305_01 \
         --hess-dir  output/invivo_250305_01/hessian \
         --rank 20 --lambda 1e-4 --max-workers 8 \
