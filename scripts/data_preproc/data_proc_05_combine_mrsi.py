@@ -23,8 +23,9 @@ New folder contents (data/processed/<name>/):
   wref_o_check.png   ← symlink to ref subject
   affine.npy         ← symlink to ref subject
 
-Also creates output/<name>/coilmap/ with ecalib_pp.npy symlinked from the
-ref subject's output coilmap (coil map is derived from shared wref data).
+Also symlinks output/<name>/coilmap and output/<name>/b0map as directory
+symlinks to the ref subject's output folders (both are derived from the
+shared wref scan and are identical across subjects).
 
 Usage:
     # combine subjects 01 02 03
@@ -44,6 +45,7 @@ Usage:
 
 import argparse
 import os
+import shutil
 import sys
 import numpy as np
 from pathlib import Path
@@ -143,24 +145,28 @@ def main():
         else:
             print(f"  [skip] {fname} not found in {ref_dir.name}")
 
-    # ── Coilmap symlink in output directory ──────────────────────────────────
-    tag = out_dir.name          # e.g. invivo_260623_comb_01_02_03
-    coilmap_src  = Path(args.out_root) / f"{args.prefix}_{ref_id}" / "coilmap" / "ecalib_pp.npy"
-    coilmap_dir  = Path(args.out_root) / tag / "coilmap"
-    coilmap_link = coilmap_dir / "ecalib_pp.npy"
+    # ── Symlink output subdirs (coilmap, b0map) from ref subject ─────────────
+    tag        = out_dir.name          # e.g. invivo_260623_comb_01_02_03
+    ref_out    = Path(args.out_root) / f"{args.prefix}_{ref_id}"
+    comb_out   = Path(args.out_root) / tag
+    comb_out.mkdir(parents=True, exist_ok=True)
 
-    if coilmap_src.exists():
-        coilmap_dir.mkdir(parents=True, exist_ok=True)
-        if coilmap_link.exists() or coilmap_link.is_symlink():
-            coilmap_link.unlink()
-        target = os.path.relpath(str(coilmap_src), str(coilmap_dir))
-        coilmap_link.symlink_to(target)
-        print(f"[combine] output coilmap: ecalib_pp.npy -> {target}")
-    else:
-        print(f"[combine] [skip] coilmap not found at {coilmap_src} — run coil correction first")
+    for subdir in ("coilmap", "b0map"):
+        src  = ref_out / subdir
+        link = comb_out / subdir
+        if link.is_symlink():
+            link.unlink()
+        elif link.is_dir():
+            shutil.rmtree(link)
+        if src.exists():
+            target = os.path.relpath(str(src), str(comb_out))
+            link.symlink_to(target)
+            print(f"[combine] output/{tag}/{subdir} -> {target}")
+        else:
+            print(f"[combine] [skip] {subdir} not found in {ref_out.name} — run earlier steps first")
 
     print(f"\n[combine] Done.  Data:   {out_dir}")
-    print(f"[combine]         Output: {coilmap_dir.parent}")
+    print(f"[combine]         Output: {comb_out}")
     print(f"[combine] Run downstream pipeline as usual with --data-dir {out_dir}")
 
 
