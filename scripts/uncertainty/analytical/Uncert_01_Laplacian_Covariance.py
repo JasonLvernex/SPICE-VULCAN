@@ -10,14 +10,15 @@ Reads  : <data_dir>/wref_o.npy
          <out_dir>/coilmap/ecalib_pp.npy
          <out_dir>/b0map/B0_map.npy
          <out_dir>/lipid_removal/mrsi_ksp_scaled.npy
-         <out_dir>/spice/V_subspace.npy
-         [<out_dir>/spice/<csv_name>.csv]  (for subspace if V not saved)
-Writes : <hess_dir>/mHm_{vox}.npy  for each brain voxel
+         <out_dir>/spice_<run_tag>/V_subspace.npy   (tag e.g. w5000_l0.0001)
+         [<out_dir>/spice_<run_tag>/<csv_name>.csv]
+Writes : <out_dir>/hessian_<run_tag>/mHm_{vox}.npy  for each brain voxel
+         (or explicit --hess-dir to override)
 
 Usage:
     python scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py \
         --data-dir  data/processed/invivo_250305_01 \
-        --hess-dir  output/invivo_250305_01/hessian \
+        --run-tag   w5000_l0.0001 \
         --rank 20 --lambda 1e-4 --max-workers 8 \
         [--vox-start 0 --vox-end 100]    # optional: parallelise over voxel ranges
 """
@@ -263,6 +264,9 @@ def parse_args():
                    help="Start index into the brain voxel list (inclusive, default: 0)")
     p.add_argument("--vox-end",       type=int,   default=None,
                    help="End index into the brain voxel list (exclusive, default: all)")
+    p.add_argument("--run-tag",       default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/hessian subdir names")
     return p.parse_args()
 
 
@@ -277,8 +281,9 @@ def main():
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
-    spice_dir   = os.path.join(args.out_dir, "spice")
-    hess_dir    = args.hess_dir or os.path.join(args.out_dir, "hessian")
+    _tg         = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir   = os.path.join(args.out_dir, _tg("spice"))
+    hess_dir    = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
     os.makedirs(hess_dir, exist_ok=True)
 
     Ny, Nx   = args.dim

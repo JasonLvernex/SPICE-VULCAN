@@ -10,16 +10,17 @@ Reads  : <data_dir>/wref_o.npy
          <out_dir>/coilmap/ecalib_pp.npy
          <out_dir>/b0map/B0_map.npy
          <out_dir>/lipid_removal/mrsi_ksp_scaled.npy
-         <out_dir>/spice/V_subspace.npy
-         <out_dir>/spice/U_est.npy
-Writes : <out_dir>/lobpcg/lobpcg_Q.npy          (eigenvectors, shape d×k)
-         <out_dir>/lobpcg/lobpcg_vals.npy        (eigenvalues, shape k)
-         <out_dir>/lobpcg/posterior_std.npy      (Ny, Nx, N_seq)
-         <out_dir>/lobpcg/fig_10_uncert_map.png
+         <out_dir>/spice_<run_tag>/V_subspace.npy    (tag e.g. w5000_l0.0001)
+         <out_dir>/spice_<run_tag>/U_est.npy
+Writes : <out_dir>/lobpcg_<run_tag>/lobpcg_Q.npy     (eigenvectors, shape d×k)
+         <out_dir>/lobpcg_<run_tag>/lobpcg_vals.npy   (eigenvalues, shape k)
+         <out_dir>/lobpcg_<run_tag>/posterior_std.npy (Ny, Nx, N_seq)
+         <out_dir>/lobpcg_<run_tag>/fig_10_uncert_map.png
 
 Usage:
     python scripts/uncertainty/analytical/Uncert_03_prefitting_uncertainty_lobpcg.py \
         --data-dir data/processed/invivo_250305_01 \
+        --run-tag  w5000_l0.0001 \
         --rank 20 --k-eig 50 --n-samples 100 \
         [--damp 0.0] [--lobpcg-maxiter 200]
 """
@@ -270,6 +271,9 @@ def parse_args():
     p.add_argument("--threshold",       type=float, default=5e-5)
     p.add_argument("--dark-mode",       action="store_true", default=True)
     p.add_argument("--no-dark-mode",    dest="dark_mode", action="store_false")
+    p.add_argument("--run-tag",         default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/lobpcg subdir names")
     return p.parse_args()
 
 
@@ -284,8 +288,9 @@ def main():
     coilmap_dir = os.path.join(args.out_dir, "coilmap")
     b0map_dir   = os.path.join(args.out_dir, "b0map")
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
-    spice_dir   = os.path.join(args.out_dir, "spice")
-    out_dir     = os.path.join(args.out_dir, "lobpcg")
+    _tg         = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir   = os.path.join(args.out_dir, _tg("spice"))
+    out_dir     = os.path.join(args.out_dir, _tg("lobpcg"))
     os.makedirs(out_dir, exist_ok=True)
 
     device_str = "cuda" if torch.cuda.is_available() else "cpu"

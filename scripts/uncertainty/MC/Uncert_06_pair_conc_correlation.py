@@ -6,13 +6,13 @@ This script uses the same linearised covariance propagation as
 11_analytical_conc_uncertainty.py, then extracts pairwise concentration
 covariance and correlation maps, e.g. Cr-PCr and NAA-NAAG.
 
-Reads  : <out_dir>/spice/V_subspace.npy
-         <out_dir>/fitting/spice_fit[/fit]/spice_aligned.nii.gz
-         <out_dir>/fitting/spice_fit/concs/raw/*.nii.gz
-         <out_dir>/fitting/spice_fit/nuisance/*.nii.gz
+Reads  : <out_dir>/spice_<run_tag>/V_subspace.npy         (tag e.g. w5000_l0.0001)
+         <out_dir>/fitting_<run_tag>/spice_fit[/fit]/spice_aligned.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit/concs/raw/*.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit/nuisance/*.nii.gz
          <data_dir>/wref_o.npy
          <data_dir>/sigma_noise.npy
-         <hess_dir>/mHm_*.npy
+         <out_dir>/hessian_<run_tag>/mHm_*.npy
          <basis_dir>/
 Writes : <out_dir>/pair_conc_correlation/
              corr_<A>_<B>.npy
@@ -24,7 +24,8 @@ Writes : <out_dir>/pair_conc_correlation/
 Usage:
     python scripts/uncertainty/MC/Uncert_06_pair_conc_correlation.py \
         --data-dir data/processed/invivo_250305_01 \
-        --basis-dir ./basis
+        --basis-dir ./basis \
+        --run-tag   w5000_l0.0001
 """
 
 import argparse
@@ -174,6 +175,9 @@ def parse_args():
     p.add_argument("--ppmlim", type=float, nargs=2, default=[3.5, 5.0])
     p.add_argument("--ppmlim-jac", action="store_true",
                    help="Restrict Jacobian to ppmlim range, matching step 11 option.")
+    p.add_argument("--run-tag",   default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/hessian/fitting subdir names")
     return p.parse_args()
 
 
@@ -187,17 +191,18 @@ def main():
     Ny, Nx = args.dim
     N_SEQ = args.n_seq_points
 
+    _tg = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
     hess_dir = args.hess_dir or first_existing(
         [
-            os.path.join(args.out_dir, "hessian"),
+            os.path.join(args.out_dir, _tg("hessian")),
             os.path.join(args.out_dir, "Hess_1e4"),
         ],
         "Hessian directory",
     )
     fit_dir = args.fit_dir or first_existing(
         [
-            os.path.join(args.out_dir, "fitting", "spice_fit"),
-            os.path.join(args.out_dir, "fitting", "spice_fit.nii.gz"),
+            os.path.join(args.out_dir, _tg("fitting"), "spice_fit"),
+            os.path.join(args.out_dir, _tg("fitting"), "spice_fit.nii.gz"),
         ],
         "fsl_mrsi fit directory",
     )
@@ -205,12 +210,12 @@ def main():
         [
             os.path.join(fit_dir, "fit", "spice_aligned.nii.gz"),
             os.path.join(fit_dir, "spice_aligned.nii.gz"),
-            os.path.join(args.out_dir, "fitting", "spice_aligned.nii.gz"),
+            os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz"),
         ],
         "aligned SPICE NIfTI-MRS",
     )
 
-    spice_dir = os.path.join(args.out_dir, "spice")
+    spice_dir = os.path.join(args.out_dir, _tg("spice"))
     out_dir = os.path.join(args.out_dir, "pair_conc_correlation")
     os.makedirs(out_dir, exist_ok=True)
 

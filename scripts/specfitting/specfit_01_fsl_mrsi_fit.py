@@ -2,21 +2,21 @@
 """
 Step 7 — Spectral fitting of SPICE reconstruction.
 
-Reads  : <out_dir>/spice/SPICE_f.npy             (raw SPICE FID from step 04, default)
-         OR --spice-npy <path>                   (e.g. spice_refit_uoss/SPICE_refit_f.npy from 04c)
+Reads  : <out_dir>/spice_<run_tag>/SPICE_f.npy    (raw SPICE FID; tag e.g. w5000_l0.0001)
+         OR --spice-npy <path>                   (explicit override)
          <data_dir>/wref_o.npy                   (water reference for brain mask)
          <fit-basis-dir>/                         (FSL-MRS fitting basis)
-Writes : <out_dir>/fitting/spice_aligned.nii.gz  (xcorr freq-aligned NIfTI-MRS)
-         <out_dir>/fitting/brain_mask.nii.gz
-         <out_dir>/fitting/spice_fit/              (fsl_mrsi output directory)
-         <out_dir>/fitting/conc_maps.npy
-         <out_dir>/fitting/fig_05_*.png
+Writes : <out_dir>/fitting_<run_tag>/spice_aligned.nii.gz
+         <out_dir>/fitting_<run_tag>/brain_mask.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit/   (fsl_mrsi output directory)
+         <out_dir>/fitting_<run_tag>/conc_maps.npy
+         <out_dir>/fitting_<run_tag>/fig_05_*.png
 
 Usage:
     python scripts/specfitting/specfit_01_fsl_mrsi_fit.py \
         --data-dir      data/processed/invivo_250305_01 \
         --basis-dir     ./basis/ \
-        --spice-npy     output/invivo_250305_01/spice_refit_uoss/SPICE_refit_f.npy \
+        --run-tag       w5000_l0.0001 \
         --dim 64 64 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr --rescale \
         [--plot-metabs NAA Cr Ins Glu PCh]
@@ -165,6 +165,9 @@ def parse_args():
                    default=["NAA","NAA+NAAG", "Cr","Cr+PCr", "Ins", "Glu", "PCh","PCh+GPC"])
     p.add_argument("--voxel-x",          type=int, default=32)
     p.add_argument("--voxel-y",          type=int, default=32)
+    p.add_argument("--run-tag",          default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/fitting subdir names")
     return p.parse_args()
 
 
@@ -177,8 +180,9 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
     load_scan_params(args, data_dir, k_key="k_mrsi")
-    spice_dir     = os.path.join(args.out_dir, "spice")
-    fit_dir       = os.path.join(args.out_dir, "fitting")
+    _tg           = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir     = os.path.join(args.out_dir, _tg("spice"))
+    fit_dir       = os.path.join(args.out_dir, _tg("fitting"))
     fit_basis_dir = args.fit_basis_dir or args.basis_dir
     os.makedirs(fit_dir, exist_ok=True)
 

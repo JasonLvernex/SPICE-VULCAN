@@ -12,10 +12,11 @@ Reads  : <data_dir>/wref_o.npy
          <out_dir>/lipid_removal/kt_mrsi_lprm.npy
          <out_dir>/lipid_removal/mrsi_ksp_scaled.npy
          <basis_dir>/
-Writes : <out_dir>/spice/SPICE_result.nii.gz
-         <out_dir>/spice/SPICE_f.npy
-         <out_dir>/spice/U_est.npy
-         <out_dir>/spice/V_subspace.npy
+Writes : <out_dir>/spice_w<wmax>_l<lambda1>/SPICE_result.nii.gz
+         <out_dir>/spice_w<wmax>_l<lambda1>/SPICE_f.npy
+         <out_dir>/spice_w<wmax>_l<lambda1>/U_est.npy
+         <out_dir>/spice_w<wmax>_l<lambda1>/V_subspace.npy
+         (run tag e.g. w5000_l0.0001; printed on startup for use with --run-tag downstream)
 
 Usage:
     # torchnufft (default)
@@ -27,7 +28,8 @@ Usage:
     # finufft
     python scripts/recon_method/recon_01_run_spice.py \
         --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
-        --backend finufft [--rank 15] [--lambda1 1e-4] [--maxiter 120]
+        --backend finufft --save-plots [--brain-threshold 0.16] [--brain-erosion 3]
+        [--rank 15] [--lambda1 1e-4] [--maxiter 120]
 """
 
 import argparse
@@ -117,7 +119,9 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
     load_scan_params(args, data_dir, k_key="k_mrsi")
-    out_dir  = os.path.join(args.out_dir, "spice")
+    run_tag  = f"w{args.wmax:g}_l{args.lambda1:g}"
+    out_dir  = os.path.join(args.out_dir, f"spice_{run_tag}")
+    print(f"[spice] Run tag: {run_tag}  (pass --run-tag {run_tag} to downstream scripts)")
     os.makedirs(out_dir, exist_ok=True)
 
     coilmap_dir = os.path.join(args.out_dir, "coilmap")

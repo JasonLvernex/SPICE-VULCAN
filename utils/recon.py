@@ -914,7 +914,7 @@ def SPICEWithSpatialConstrain_cg_nufft(
         raise ValueError("Only CG solver is currently supported in this wrapper.")
 
     if x0 is None:
-        print('[SPICE] Running iterative NUFFT for initial guess (30 iters)…')
+        print('[SPICE] Running iterative NUFFT for initial guess (5 iters)…')
         recon_nufft, _, b_init = iterative_nufft_recon(
             kspace=noisy_kt_spaces,
             B0_mat=B0_mat,
@@ -925,7 +925,7 @@ def SPICEWithSpatialConstrain_cg_nufft(
             n_coils=32,
             smaps=None,
             density_method=None,
-            maxiter=30,
+            maxiter=5,
             solver="cg",
         )
         U_init = recon_nufft.reshape(img_shape) @ np.linalg.pinv(V.conj().T)
@@ -1095,7 +1095,7 @@ def SPICEWithSpatialConstrain_cg_nufft_joint(
     np.save(os.path.join(save_folder, 'Basis_V.npy'), V)
 
     if x0 is None:
-        print('[SPICE-joint] Running iterative NUFFT for initial guess (30 iters)…')
+        print('[SPICE-joint] Running iterative NUFFT for initial guess (5 iters)…')
         recon_nufft, _, b_init = iterative_nufft_recon(
             kspace=noisy_kt_spaces,
             B0_mat=B0_mat,
@@ -1106,7 +1106,7 @@ def SPICEWithSpatialConstrain_cg_nufft_joint(
             n_coils=32,
             smaps=None,
             density_method=None,
-            maxiter=30,
+            maxiter=5,
             solver="cg",
         )
         U_init = recon_nufft.reshape(img_shape) @ np.linalg.pinv(V.conj().T)

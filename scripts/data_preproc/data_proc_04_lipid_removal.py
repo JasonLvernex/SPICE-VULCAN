@@ -21,11 +21,11 @@ Usage:
         --n-coils         32 \
         --dim             64 64 \
         --ppm-center      3.027 \
-        --brain-threshold 0.00034 \
+        --brain-threshold 0.16 \
         --lipid-beta      200.0 \
         --n-lipid-voxels  500 \
         --nsigma-gmm      0.2 \
-        --lipid-rank      5 \
+        --lipid-rank      10 \
         --topn-fallback   100 \
         --phase-ppmlim    3.5 3.9 \
         --plot-voxel      41 24 \

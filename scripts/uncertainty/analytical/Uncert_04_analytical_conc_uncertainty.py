@@ -17,15 +17,15 @@ Method (Taylor / linearised error propagation):
     Concentration covariance:
         Cov(c) = Sigma_theta[:K, :K]
 
-Reads  : <out_dir>/spice/V_subspace.npy
-         <out_dir>/fitting/spice_aligned.nii.gz     (data used for fitting)
-         <out_dir>/fitting/spice_fit.nii.gz/        (fsl_mrsi output dir)
+Reads  : <out_dir>/spice_<run_tag>/V_subspace.npy        (tag e.g. w5000_l0.0001)
+         <out_dir>/fitting_<run_tag>/spice_aligned.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit.nii.gz/
          <data_dir>/wref_o.npy
          <data_dir>/sigma_noise.npy
-         <hess_dir>/mHm_*.npy                       (per-voxel Hessian blocks)
-         <basis_dir>/                               (fitting basis)
+         <out_dir>/hessian_<run_tag>/mHm_*.npy
+         <basis_dir>/
 
-Writes : <out_dir>/conc_uncertainty_analytical/
+Writes : <out_dir>/conc_uncertainty_analytical_<run_tag>/
              conc_std_analytical.npy           (Ny, Nx, K)  raw fit uncertainty
              conc_std_analytical_internal.npy  (Ny, Nx, K)  internal (ratio) uncertainty
              metab_names.npy
@@ -36,7 +36,7 @@ Usage:
     python scripts/uncertainty/analytical/Uncert_04_analytical_conc_uncertainty.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
-        --hess-dir  output/invivo_250305_01/hessian \
+        --run-tag   w5000_l0.0001 \
         --rank 20 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
         --plot-metabs NAA Cr Ins Glu PCh \
@@ -210,6 +210,9 @@ def parse_args():
                         "When set, the per-voxel rescale factor s=max|FID| is used "
                         "to restore original-scale concentrations for Jacobian "
                         "evaluation, fixing ill-conditioning of J_fid.")
+    p.add_argument("--run-tag",          default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/hessian/fitting subdir names")
     return p.parse_args()
 
 
@@ -221,10 +224,11 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
     load_scan_params(args, data_dir, k_key="k_mrsi")
-    spice_dir = os.path.join(args.out_dir, "spice")
-    hess_dir  = args.hess_dir or os.path.join(args.out_dir, "hessian")
-    fit_dir   = args.fit_dir  or os.path.join(args.out_dir, "fitting", "spice_fit.nii.gz")
-    out_dir   = os.path.join(args.out_dir, "conc_uncertainty_analytical")
+    _tg       = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir = os.path.join(args.out_dir, _tg("spice"))
+    hess_dir  = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
+    fit_dir   = args.fit_dir  or os.path.join(args.out_dir, _tg("fitting"), "spice_fit.nii.gz")
+    out_dir   = os.path.join(args.out_dir, _tg("conc_uncertainty_analytical"))
     os.makedirs(out_dir, exist_ok=True)
 
     Ny, Nx  = args.dim
@@ -264,7 +268,7 @@ def main():
     print(f"[step12] Internal ref: {[metab_names[i] for i in ref_idxs]} (idxs {ref_idxs})")
 
     # Load aligned SPICE NIfTI to get dwelltime / cf for MRS object
-    aligned_nii_path = os.path.join(args.out_dir, "fitting", "spice_aligned.nii.gz")
+    aligned_nii_path = os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz")
     nii_mrs  = NIFTI_MRS(aligned_nii_path)
     bw_data  = 1.0 / nii_mrs.dwelltime
     cf_data  = float(nii_mrs.spectrometer_frequency[0])

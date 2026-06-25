@@ -10,9 +10,9 @@ Supports two modes selected by --mode:
 
     Reads  : <data_dir>/wref_o.npy
              <data_dir>/sigma_noise.npy
-             <out_dir>/spice/V_subspace.npy
-             <out_dir>/spice/U_est.npy
-             <hess_dir>/mHm_*.npy
+             <out_dir>/spice_<run_tag>/V_subspace.npy
+             <out_dir>/spice_<run_tag>/U_est.npy
+             <out_dir>/hessian_<run_tag>/mHm_*.npy
 
   lobpcg
     Loads pre-computed LOBPCG eigenpairs (from step 10), draws low-rank
@@ -20,26 +20,27 @@ Supports two modes selected by --mode:
 
     Reads  : <data_dir>/wref_o.npy
              <data_dir>/sigma_noise.npy  (optional; fallback to --sigma2)
-             <out_dir>/spice/V_subspace.npy
-             <lobpcg-dir>/lobpcg_Q.npy
-             <lobpcg-dir>/lobpcg_vals.npy
+             <out_dir>/spice_<run_tag>/V_subspace.npy
+             <out_dir>/lobpcg_<run_tag>/lobpcg_Q.npy
+             <out_dir>/lobpcg_<run_tag>/lobpcg_vals.npy
 
-Writes : <out_dir>/uncertainty/fig_09_uncert_map.png
-         <out_dir>/uncertainty/fig_09_spice_mean.png
-         <out_dir>/uncertainty/posterior_std.npy
+Writes : <out_dir>/uncertainty_<run_tag>/fig_09_uncert_map.png
+         <out_dir>/uncertainty_<run_tag>/fig_09_spice_mean.png
+         <out_dir>/uncertainty_<run_tag>/posterior_std.npy
+         (tag e.g. w5000_l0.0001; omit --run-tag for legacy names without suffix)
 
 Usage:
     # voxelwise (default) — requires step 08 hessian outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --data-dir  data/processed/invivo_250305_01 \
-        --hess-dir  output/invivo_250305_01/hessian \
+        --run-tag   w5000_l0.0001 \
         --rank 20 --n-samples 100
 
     # lobpcg — requires step 10 LOBPCG outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
-        --data-dir    data/processed/invivo_250305_01 \
-        --lobpcg-dir  output/invivo_250305_01/lobpcg \
+        --data-dir  data/processed/invivo_250305_01 \
+        --run-tag   w5000_l0.0001 \
         --rank 20 --n-samples 100
 """
 
@@ -280,6 +281,9 @@ def parse_args():
                    help="vmax for uncertainty map colorbar")
     p.add_argument("--dark-mode",      action="store_true", default=True)
     p.add_argument("--no-dark-mode",   dest="dark_mode", action="store_false")
+    p.add_argument("--run-tag",        default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/hessian/lobpcg/uncertainty subdir names")
     return p.parse_args()
 
 
@@ -332,8 +336,9 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
     load_scan_params(args, data_dir, k_key="k_mrsi")
-    spice_dir = os.path.join(args.out_dir, "spice")
-    out_dir   = os.path.join(args.out_dir, "uncertainty")
+    _tg       = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir = os.path.join(args.out_dir, _tg("spice"))
+    out_dir   = os.path.join(args.out_dir, _tg("uncertainty"))
     os.makedirs(out_dir, exist_ok=True)
 
     Ny, Nx   = args.dim
@@ -360,7 +365,7 @@ def main():
 
     # ── Mode: voxelwise ───────────────────────────────────────────────────────
     if args.mode == "voxelwise":
-        hess_dir    = args.hess_dir or os.path.join(args.out_dir, "hessian")
+        hess_dir    = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
         sigma_noise = np.load(data_dir + "sigma_noise.npy")
         est_U       = np.load(os.path.join(spice_dir, "U_est.npy"))
         print(f"[uncert-post] V={V.shape}  U={est_U.shape}  sigma_noise={sigma_noise}")
@@ -391,7 +396,7 @@ def main():
 
     # ── Mode: lobpcg ─────────────────────────────────────────────────────────
     else:
-        lobpcg_dir = args.lobpcg_dir or os.path.join(args.out_dir, "lobpcg")
+        lobpcg_dir = args.lobpcg_dir or os.path.join(args.out_dir, _tg("lobpcg"))
         Q    = np.load(os.path.join(lobpcg_dir, "lobpcg_Q.npy"))
         vals = np.load(os.path.join(lobpcg_dir, "lobpcg_vals.npy"))
         print(f"[uncert-post] Q={Q.shape}  vals={vals.shape}")

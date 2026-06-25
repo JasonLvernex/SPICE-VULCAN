@@ -12,16 +12,16 @@ Supports two modes matching step 09:
   lobpcg      Samples from LOBPCG eigenpairs (step 10).  Perturbations from
               CN(0, H^{-1}) are added to the mean SPICE estimate.
 
-Reads  : <out_dir>/spice/SPICE_f.npy
-         <out_dir>/spice/V_subspace.npy
-         <out_dir>/spice/U_est.npy
+Reads  : <out_dir>/spice_<run_tag>/SPICE_f.npy        (tag e.g. w5000_l0.0001)
+         <out_dir>/spice_<run_tag>/V_subspace.npy
+         <out_dir>/spice_<run_tag>/U_est.npy
          <data_dir>/wref_o.npy
-         [voxelwise] <hess_dir>/mHm_*.npy  +  <data_dir>/sigma_noise.npy
-         [lobpcg]    <lobpcg_dir>/lobpcg_Q.npy  <lobpcg_dir>/lobpcg_vals.npy
+         [voxelwise] <out_dir>/hessian_<run_tag>/mHm_*.npy  +  <data_dir>/sigma_noise.npy
+         [lobpcg]    <out_dir>/lobpcg_<run_tag>/lobpcg_Q.npy  lobpcg_vals.npy
          <basis_dir>/            (training basis for xcorr reference)
          <fit_basis_dir>/        (FSL-MRS fitting basis)
 
-Writes : <out_dir>/conc_uncertainty/
+Writes : <out_dir>/conc_uncertainty_<run_tag>/
              mc_{i:04d}_phcorr.nii.gz      (xcorr-aligned sample NIfTI-MRS)
              mc_{i:04d}_fit.nii.gz/         (fsl_mrsi output directory)
              output_concs.npy               (N_success, Ny, Nx, n_metab)
@@ -36,7 +36,7 @@ Usage:
         --data-dir      data/processed/invivo_250305_01 \
         --basis-dir     ./basis/ \
         --fit-basis-dir ./basis_fit/ \
-        --lobpcg-dir    output/invivo_250305_01/lobpcg \
+        --run-tag       w5000_l0.0001 \
         --mode lobpcg --rank 20 --n-samples 20 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
         --plot-metabs NAA Cr Ins Glu PCh
@@ -45,7 +45,7 @@ Usage:
     python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
-        --hess-dir  output/invivo_250305_01/hessian \
+        --run-tag   w5000_l0.0001 \
         --mode voxelwise --rank 20 --n-samples 20
 """
 
@@ -327,6 +327,9 @@ def parse_args():
                    default=["NAA", "NAA+NAAG", "Cr", "Cr+PCr", "Ins", "Glu", "PCh"])
     p.add_argument("--cleanup",         action="store_true",
                    help="Delete intermediate per-sample NIfTI and fit dirs after collecting")
+    p.add_argument("--run-tag",         default="",
+                   help="Run identifier from recon_01 (e.g. w5000_l0.0001); "
+                        "appended to spice/fitting/conc_uncertainty subdir names")
     return p.parse_args()
 
 
@@ -338,8 +341,9 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
     load_scan_params(args, data_dir, k_key="k_mrsi")
-    spice_dir     = os.path.join(args.out_dir, "spice")
-    out_dir       = os.path.join(args.out_dir, "conc_uncertainty")
+    _tg           = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
+    spice_dir     = os.path.join(args.out_dir, _tg("spice"))
+    out_dir       = os.path.join(args.out_dir, _tg("conc_uncertainty"))
     fit_basis_dir = args.fit_basis_dir or args.basis_dir
     os.makedirs(out_dir, exist_ok=True)
 
@@ -398,7 +402,7 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     if args.mode == "voxelwise":
-        hess_dir    = args.hess_dir or os.path.join(args.out_dir, "hessian")
+        hess_dir    = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
         sigma_noise = float(np.load(data_dir + "sigma_noise.npy"))
         cov_scale   = sigma_noise ** 2
         mu_map      = (mean_U @ V.conj().T).astype(D_TYPE)      # (N_vox, N_seq)
@@ -408,7 +412,7 @@ def main():
         )   # (n_samples, N_voxel, N_seq) FID
 
     else:  # lobpcg
-        lobpcg_dir = args.lobpcg_dir or os.path.join(args.out_dir, "lobpcg")
+        lobpcg_dir = args.lobpcg_dir or os.path.join(args.out_dir, _tg("lobpcg"))
         Q    = np.load(os.path.join(lobpcg_dir, "lobpcg_Q.npy"))
         vals = np.load(os.path.join(lobpcg_dir, "lobpcg_vals.npy"))
         print(f"[mc-fit] lobpcg  Q={Q.shape}  vals={vals.shape}  sigma2={args.sigma2}")
@@ -425,7 +429,7 @@ def main():
     # xcorr-aligned perturbed FID.  We correct each MC sample so its c_raw is in
     # the same units as the original fit's c_raw (i.e. c_fit / s_j).
     if args.rescale:
-        _orig_nii      = NIFTI_MRS(os.path.join(args.out_dir, "fitting", "spice_aligned.nii.gz"))
+        _orig_nii      = NIFTI_MRS(os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz"))
         _orig_fid_data = np.array(_orig_nii.image[:, :, 0, :])      # (Nx, Ny, N_seq)
         orig_scale_map = np.max(np.abs(_orig_fid_data), axis=-1)    # (Nx, Ny)
         orig_scale_map = np.where(orig_scale_map > 0, orig_scale_map, 1.0)
