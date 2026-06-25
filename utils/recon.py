@@ -899,6 +899,9 @@ def SPICEWithSpatialConstrain_cg_nufft(
     x0: Optional[np.ndarray] = None,
     brain_mask_inner: Optional[np.ndarray] = None,
     PPM_AXIS: Optional[np.ndarray] = None,
+    dx_tol: float = 1e-6,
+    patience: int = 4,
+    patience_dx: int = 3,
 ) -> tuple:
     """
     SPICE CG solver with Toeplitz NUFFT and internal early stopping.
@@ -958,10 +961,6 @@ def SPICEWithSpatialConstrain_cg_nufft(
 
     iter_count = 0
     pbar = tqdm(total=maxiter, desc="CG iters", unit="iter")
-
-    patience     = 4
-    patience_dx  = 3
-    dx_tol       = 1e-6
 
     best_x = x0.copy()
     Ax0    = A.matvec(x0)
@@ -1080,6 +1079,7 @@ def SPICEWithSpatialConstrain_cg_nufft_joint(
     PPM_AXIS: Optional[np.ndarray] = None,
     patience: int = 4,
     patience_dx: int = 3,
+    dx_tol: float = 1e-6,
 ) -> tuple:
     """
     SPICE CG solver supporting multiple rank blocks with per-block spatial regularization.
@@ -1136,7 +1136,6 @@ def SPICEWithSpatialConstrain_cg_nufft_joint(
 
     iter_count       = 0
     pbar             = tqdm(total=maxiter, desc="CG iters", unit="iter")
-    dx_tol           = 1e-6
 
     best_x           = x0.copy()
     Ax0              = A.matvec(x0)

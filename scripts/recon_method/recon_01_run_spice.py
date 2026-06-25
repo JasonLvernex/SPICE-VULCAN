@@ -99,6 +99,12 @@ def parse_args():
     p.add_argument("--pool-size",       type=int,   default=1)
     p.add_argument("--minpool",         action="store_true")
     p.add_argument("--maxiter",         type=int,   default=120)
+    p.add_argument("--dx-tol",          type=float, default=1e-6,
+                   help="Early-stop step-size tolerance for CG (default: 1e-6)")
+    p.add_argument("--patience",        type=int,   default=4,
+                   help="No-improvement steps before early stop (default: 4)")
+    p.add_argument("--patience-dx",     type=int,   default=3,
+                   help="Small-dx steps before early stop (default: 3)")
     # Training
     p.add_argument("--training-size",   type=int,   default=10000)
     p.add_argument("--csv-name",        default="SS_training")
@@ -284,6 +290,9 @@ def main():
         N_Vox=N_VOXEL, NUM_SPICE_RANK=args.rank,
         WW=WW, Solver="cg",
         lamda_1=args.lambda1, maxiter=args.maxiter,
+        dx_tol           = args.dx_tol,
+        patience         = args.patience,
+        patience_dx      = args.patience_dx,
         brain_mask_inner = brain_mask_inner,
         PPM_AXIS         = PPM_AXIS,
     )
