@@ -213,7 +213,7 @@ def main():
         ref_img_obj = None
         affine      = np.eye(4)
 
-    fid_save = SpecToFID(image_blurry_numpy.reshape(Ny, Nx, -1), axis=-1).transpose(1, 0, 2)
+    fid_save = np.ascontiguousarray(SpecToFID(image_blurry_numpy.reshape(Ny, Nx, -1), axis=-1).transpose(1, 0, 2)[::-1, :, :])
     gen_nifti_mrs(fid_save[:, :, np.newaxis, :], dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "wref_adj_nufft.nii.gz"))
     print("[b0_corr] Saved wref_adj_nufft.nii.gz")

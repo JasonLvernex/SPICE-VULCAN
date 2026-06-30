@@ -232,7 +232,7 @@ def main():
 
     # save magnitude-weighted mask for fsl_mrsi
     mask_nii = os.path.join(fit_dir, "brain_mask.nii.gz")
-    Image((wref_2d * brain_mask).astype(np.float32).T).save(mask_nii)
+    Image(np.ascontiguousarray((wref_2d * brain_mask).astype(np.float32).T[::-1, :])).save(mask_nii)
     print(f"[fitting] Brain mask saved → {mask_nii}")
 
     # ── Visualise raw SPICE spectrum ──────────────────────────────────────────
@@ -267,7 +267,7 @@ def main():
 
     # ── Wrap SPICE FID in NIfTI-MRS ──────────────────────────────────────────
     # NIfTI-MRS layout: (Nx, Ny, 1, npts)  (x-axis first)
-    mrsi_f_4 = spice_3d.transpose(1, 0, 2)[:, :, np.newaxis, :]
+    mrsi_f_4 = np.ascontiguousarray(spice_3d.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     nifti_spice = gen_nifti_mrs(
         mrsi_f_4,
         dwelltime=TS,
@@ -284,7 +284,7 @@ def main():
     print(f"[fitting] Freq-aligned NIfTI saved → {aligned_nii}")
 
     # Visualise after alignment
-    aligned_data = np.array(aligned_nmrs.image[:, :, 0, :]).transpose(1, 0, 2).conj()  # (Ny, Nx, N_SEQ)
+    aligned_data = np.array(aligned_nmrs.image[:, :, 0, :]).transpose(1, 0, 2)[:, ::-1, :].conj()  # (Ny, Nx, N_SEQ)
     _, fig_aln, _ = plot_voxel_spectrum_and_maps(
         FIDToSpec(aligned_data, axis=-1), (Ny, Nx, N_SEQ),
         voxel_x=args.voxel_x, voxel_y=args.voxel_y,

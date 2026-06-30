@@ -49,7 +49,7 @@ from scipy.sparse.linalg import LinearOperator, lobpcg
 from tqdm import tqdm
 from typing import Optional, Tuple
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from utils.scan_params import load_scan_params
 from utils.utils import NUFFTOp, calc_Bmatrix, Calc_B0_matrix_mx, build_nufft_ops
 

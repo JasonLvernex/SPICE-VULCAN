@@ -65,7 +65,7 @@ from fsl_mrs.core.nifti_mrs import NIFTI_MRS
 from fsl_mrs.utils.baseline import Baseline
 from fsl_mrs import models as fsl_models
 
-_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 

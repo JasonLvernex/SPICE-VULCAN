@@ -471,10 +471,14 @@ def main():
 
     # ── 2. MRSI trajectory (read once; same seq for all files) ────────────────
     print("\n[twix2npy] Reading MRSI seq trajectory …")
-    # peek at first MRSI file to know N_per_file
-    first_mrsi_raw, _ = _read_twix(os.path.join(raw, args.mrsi_dat[0]), N_COILS)
+    # peek at first MRSI file to know N_per_file and get MRSI header for affine
+    first_mrsi_raw, first_mrsi_hdrs = _read_twix(os.path.join(raw, args.mrsi_dat[0]), N_COILS)
     N_per_file = first_mrsi_raw.shape[1]
     del first_mrsi_raw
+    # affine must use the MRSI header so spec2nii takes the CSI orientation path
+    # (pixel spacing = FOV/N_voxels), not the SVS path used by the wref header
+    _q = _calc_pos_info(first_mrsi_hdrs['fullHdr'], RES, 1)['affine']
+    mrsi_affine = _q.copy()
 
     mrsi_traj_one, _ = _read_traj(
         os.path.join(raw, args.mrsi_seq),
@@ -517,7 +521,7 @@ def main():
             np.save(os.path.join(out_dir, "wref_ksp.npy"),   wref_ksp_npy)
             np.save(os.path.join(out_dir, "wref_o.npy"),     wref_o)
             np.save(os.path.join(out_dir, "sigma_noise.npy"), np.float32(sigma_noise))
-            np.save(os.path.join(out_dir, "affine.npy"),      pos_info['affine'].astype(np.float64))
+            np.save(os.path.join(out_dir, "affine.npy"),      mrsi_affine.astype(np.float64))
             _save_wref_o_png(wref_o, out_dir)
             print(f"  saved wref files + affine.npy")
         else:

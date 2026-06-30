@@ -316,10 +316,11 @@ def build_gram_for_worker(
         import torchkbnufft as tkbn
         T_D_TYPE = torch.complex64
 
+        toep_ob  = tkbn.ToepNufft().to(device_str)
+        kernel_t = torch.tensor(kernel_np).to(device_str)
+
         def _toep_mv(x_np):
-            x_t = torch.tensor(x_np.astype(D_TYPE), device=device_str).unsqueeze(0).unsqueeze(0)
-            kernel_t = torch.tensor(kernel_np).to(device_str)
-            toep_ob  = tkbn.ToepNufft().to(device_str)
+            x_t = torch.from_numpy(x_np.astype(D_TYPE)).reshape(1, 1, *im_size).to(device_str)
             return toep_ob(x_t, kernel_t, smaps=None, norm="ortho").squeeze().cpu().numpy().astype(D_TYPE).ravel()
 
         def _fid2spec(x):

@@ -15,6 +15,7 @@ Usage:
     python scripts/uncertainty/MC/Uncert_07_group_uncertainty.py \
         --subjects invivo_260623_01 invivo_260623_02 invivo_260623_03 invivo_260623_04 invivo_260623_05 \
         --out-dir output/group_260623 \
+        --run-tag  w5000_l0.0001 \
         --dim 64 64 \
         --plot-metabs NAA Cr Ins Glu PCh
 """
@@ -33,7 +34,7 @@ import matplotlib.ticker as mticker
 import nibabel as nib
 import numpy as np
 
-_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 from utils.pipeline_utils import make_brain_mask
@@ -101,6 +102,74 @@ def _plot_map(title, data_2d, wref_norm, brain_mask, out_path,
     plt.close(fig)
 
 
+def _plot_prefitting_voxel_uncert(mean_map, std_map, mean_spec, std_spec,
+                                   PPM_AXIS, brain_mask, wref_norm,
+                                   vy, vx, out_path, threshold=None):
+    """3-panel figure: mean magnitude map | std map | spectrum ± std at (vy, vx)."""
+    import copy
+    import matplotlib.ticker as mticker
+
+    fig, axs = plt.subplots(1, 3, figsize=(18, 5), facecolor="black")
+    for ax in axs:
+        ax.set_facecolor("black")
+        ax.tick_params(colors="white")
+        ax.title.set_color("white")
+        ax.xaxis.label.set_color("white")
+        ax.yaxis.label.set_color("white")
+        for sp in ax.spines.values():
+            sp.set_color("white")
+
+    # Panel 1: mean spectral magnitude map
+    mean_masked = np.where(brain_mask, mean_map, np.nan)
+    cmap_g = copy.copy(plt.cm.get_cmap("viridis"))
+    cmap_g.set_bad(color="black")
+    im0 = axs[0].imshow(mean_masked, origin="lower", cmap=cmap_g)
+    axs[0].set_title("Mean spectral magnitude (avg over ppm)")
+    cbar0 = plt.colorbar(im0, ax=axs[0], fraction=0.046)
+    cbar0.ax.yaxis.set_tick_params(color="white")
+    plt.setp(cbar0.ax.get_yticklabels(), color="white")
+    axs[0].plot(vx, vy, "g+", markersize=10, markeredgewidth=2)
+
+    # Panel 2: std map with numerical colorbar
+    std_masked = np.where(brain_mask, std_map, np.nan)
+    vmax_std = threshold if threshold is not None else (
+        float(np.nanpercentile(std_masked[brain_mask], 95)) if brain_mask.any() else None
+    )
+    cmap_r = copy.copy(plt.cm.get_cmap("Reds"))
+    cmap_r.set_bad(color="black")
+    wref_brain = np.where(brain_mask, wref_norm, np.nan)
+    wref_cmap = copy.copy(plt.cm.get_cmap("gray"))
+    wref_cmap.set_bad(color="black")
+    axs[1].imshow(wref_brain, origin="lower", cmap=wref_cmap, alpha=0.5, zorder=0)
+    im1 = axs[1].imshow(std_masked, origin="lower", vmin=0, vmax=vmax_std,
+                         cmap=cmap_r, alpha=0.9, zorder=1)
+    axs[1].contour(brain_mask, levels=[0.5], colors="white", linewidths=0.7, zorder=2)
+    axs[1].set_title("Pre-fitting std (mean over ppm)")
+    cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046)
+    cbar1.ax.yaxis.set_tick_params(color="white")
+    cbar1.ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.2e}"))
+    plt.setp(cbar1.ax.get_yticklabels(), color="white")
+    axs[1].plot(vx, vy, "g+", markersize=10, markeredgewidth=2)
+
+    # Panel 3: spectrum ± std at selected voxel
+    mu  = mean_spec[vy, vx, :]
+    sig = std_spec[vy, vx, :]
+    axs[2].plot(PPM_AXIS, mu, color="white", label="Mean")
+    axs[2].fill_between(PPM_AXIS, mu - sig, mu + sig, alpha=0.35, color="tomato",
+                         label="±1 std")
+    axs[2].set_xlabel("ppm")
+    axs[2].set_ylabel("|Spectrum|")
+    axs[2].set_title(f"Group spectrum uncertainty  voxel ({vy},{vx})")
+    axs[2].invert_xaxis()
+    axs[2].legend(labelcolor="white", facecolor="black")
+    axs[2].grid(True, alpha=0.3, color="gray")
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="black")
+    plt.close(fig)
+    print(f"[group-uncert] Saved {out_path}")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args():
@@ -113,9 +182,12 @@ def parse_args():
                    help="Root dir containing per-subject data folders (default: ./data/processed)")
     p.add_argument("--out-dir",         default=None,
                    help="Output directory for group results (default: <out-root>/group_<prefix>)")
-    p.add_argument("--fit-subdir",      default="fitting/spice_fit",
+    p.add_argument("--run-tag",         default="",
+                   help="Run tag used in recon/fitting dirs (e.g. w5000_l0.0001); "
+                        "auto-derives fit-subdir as fitting_<tag>/spice_fit")
+    p.add_argument("--fit-subdir",      default=None,
                    help="Subdir under each subject's output for fsl_mrsi results "
-                        "(default: fitting/spice_fit)")
+                        "(default: fitting_<run-tag>/spice_fit, or fitting/spice_fit if no tag)")
     p.add_argument("--dim",             type=int, nargs=2, default=[64, 64],
                    metavar=("NY", "NX"))
     p.add_argument("--n-seq-points",    type=int, default=300)
@@ -130,6 +202,12 @@ def parse_args():
                    default=["NAA", "NAA+NAAG", "Cr", "Cr+PCr", "Ins", "Glu", "PCh", "PCh+GPC"])
     p.add_argument("--ref-subject",     default=None,
                    help="Subject used for brain mask / wref (default: first subject)")
+    p.add_argument("--threshold",       type=float, default=None,
+                   help="vmax for prefitting std map colorbar (default: auto 95th percentile)")
+    p.add_argument("--voxel-x",        type=int, default=38,
+                   help="Column index for spectrum uncertainty plot (default: 38)")
+    p.add_argument("--voxel-y",        type=int, default=20,
+                   help="Row index for spectrum uncertainty plot (default: 20)")
     return p.parse_args()
 
 
@@ -140,6 +218,10 @@ def main():
     Ny, Nx  = args.dim
     N_SEQ   = args.n_seq_points
     N_SUBJ  = len(args.subjects)
+
+    if args.fit_subdir is None:
+        _fit_base = f"fitting_{args.run_tag}" if args.run_tag else "fitting"
+        args.fit_subdir = f"{_fit_base}/spice_fit"
 
     # Derive out-dir from subject list prefix if not given
     if args.out_dir is None:
@@ -166,8 +248,9 @@ def main():
     # ── Pre-fitting uncertainty ────────────────────────────────────────────────
     print("\n[group-uncert] === Pre-fitting uncertainty ===")
     spice_specs = []
+    _tg = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
     for subj in args.subjects:
-        spice_path = os.path.join(args.out_root, subj, "spice", "SPICE_f.npy")
+        spice_path = os.path.join(args.out_root, subj, _tg("spice"), "SPICE_f.npy")
         if not os.path.exists(spice_path):
             print(f"[warn] Missing {spice_path}, skipping subject.")
             continue
@@ -199,8 +282,8 @@ def main():
             cmap="Reds", cbar_label="Std (spectral magnitude)",
         )
 
-        # Spectrum plot at a few representative voxels
-        vy, vx = Ny // 2, Nx // 2
+        # Per-subject spectra overlay at selected voxel
+        vy, vx = args.voxel_y, args.voxel_x
         fig, ax = plt.subplots(figsize=(10, 4), facecolor="black")
         ax.set_facecolor("black")
         ax.tick_params(colors="white")
@@ -218,6 +301,20 @@ def main():
         fig.savefig(os.path.join(args.out_dir, "fig_14_prefitting_spectra.png"),
                     dpi=150, facecolor="black")
         plt.close(fig)
+
+        # 3-panel uncertainty figure (map | std map | spectrum ± std)
+        _plot_prefitting_voxel_uncert(
+            mean_map  = prefitting_mean.mean(axis=-1),
+            std_map   = mean_std_map,
+            mean_spec = prefitting_mean,
+            std_spec  = prefitting_std,
+            PPM_AXIS  = PPM_AXIS,
+            brain_mask = brain_mask,
+            wref_norm  = wref_norm,
+            vy=vy, vx=vx,
+            out_path  = os.path.join(args.out_dir, "fig_14_prefitting_voxel_uncert.png"),
+            threshold = args.threshold,
+        )
         print(f"[group-uncert] Saved fig_14_prefitting_std_map.png + fig_14_prefitting_spectra.png")
 
     # ── Concentration uncertainty ──────────────────────────────────────────────

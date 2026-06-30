@@ -32,14 +32,14 @@ Writes : <out_dir>/uncertainty_<run_tag>/fig_09_uncert_map.png
 Usage:
     # voxelwise (default) — requires step 08 hessian outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
-        --data-dir  data/processed/invivo_250305_01 \
+        --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
         --rank 20 --n-samples 100
 
     # lobpcg — requires step 10 LOBPCG outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
-        --data-dir  data/processed/invivo_250305_01 \
+        --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
         --rank 20 --n-samples 100
 """
@@ -54,13 +54,13 @@ filterwarnings("ignore")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+import matplotlib.ticker
+import matplotlib.ticker as mticker
 import numpy as np
 from scipy.ndimage import binary_erosion
 from tqdm import tqdm
-from typing import Optional, Tuple
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from utils.scan_params import load_scan_params
 
 D_TYPE = np.complex64
@@ -144,99 +144,106 @@ def build_dataset_auto(mHm_dir, num_voxels, V, mu_map,
     return data, mask
 
 
-# ── plot functions (ported from Run_SPICE_toeplitz.ipynb) ─────────────────────
+# ── plot functions ────────────────────────────────────────────────────────────
 
 def plot_average_variation(
-    spice_test: np.ndarray,
-    img_shape: tuple,
-    voxel_x: int,
-    voxel_y: int,
-    voxel_z: int = 0,
-    phi0: float = 0.0,
-    brain_mask_inner: Optional[np.ndarray] = None,
-    brain_prior_map: Optional[np.ndarray] = None,
-    prior_alpha: float = 0.35,
-    threshold: Optional[float] = None,
-    PPM_AXIS: Optional[np.ndarray] = None,
-    cmap: str = "Reds",
-    figsize: Tuple[float, float] = (18, 5),
-    dark_mode: bool = True,
+    mean_spec:  np.ndarray,
+    std_img:    np.ndarray,
+    img_shape:  tuple,
+    voxel_x:    int,
+    voxel_y:    int,
+    wref_norm:  np.ndarray = None,
+    brain_mask: np.ndarray = None,
+    threshold:  float = None,
+    PPM_AXIS:   np.ndarray = None,
+    dark_mode:  bool = True,
 ):
+    import copy
     nx, ny, nt = img_shape
-    spice_test = np.asarray(spice_test)
-    if spice_test.size != nx * ny * nt:
-        if spice_test.ndim == 3 and spice_test.shape == (nx, ny, nt):
-            SPICE_img = spice_test
-        else:
-            raise ValueError(f"spice_test size mismatch: got {spice_test.shape}")
-    else:
-        SPICE_img = spice_test.reshape(nx, ny, nt)
+    mean_spec = np.asarray(mean_spec).reshape(nx, ny, nt)
+    std_img   = np.asarray(std_img).reshape(nx, ny, nt)
 
-    Spec = SPICE_img[:, :, np.newaxis, :]
-    nx, ny, nz, npts = Spec.shape
+    mask_2d = brain_mask if brain_mask is not None else np.ones((nx, ny), dtype=bool)
 
-    mag_map_2d  = np.mean(np.abs(Spec), axis=-1)[:, :, voxel_z]
-    spec_voxel  = Spec[voxel_y, voxel_x, voxel_z, :].copy().astype(np.complex128)
-    if phi0 != 0:
-        spec_voxel *= np.exp(1j * np.deg2rad(phi0))
+    mean_map = np.mean(np.abs(mean_spec), axis=-1)       # (nx, ny)
+    std_map  = np.mean(np.abs(std_img),   axis=-1)       # (nx, ny)
+    mean_map = np.where(mask_2d, mean_map, np.nan)
+    std_map  = np.where(mask_2d, std_map,  np.nan)
 
-    if brain_mask_inner is None:
-        mask_2d = np.ones((nx, ny), dtype=bool)
-    else:
-        bm = np.asarray(brain_mask_inner)
-        mask_2d = bm[:, :, voxel_z] if bm.ndim == 3 else bm
+    c = "white" if dark_mode else "black"
+    bg = "black" if dark_mode else "white"
 
-    mag_masked = mag_map_2d.copy()
-    mag_masked[~mask_2d] = np.nan
-
-    fig, axs = plt.subplots(1, 3, figsize=figsize)
-
+    fig, axs = plt.subplots(1, 3, figsize=(18, 5))
     if dark_mode:
         fig.patch.set_facecolor("black")
-        for ax in axs:
+    for ax in axs:
+        if dark_mode:
             ax.set_facecolor("black")
-            ax.title.set_color("white")
-            ax.xaxis.label.set_color("white")
-            ax.yaxis.label.set_color("white")
-            ax.tick_params(colors="white")
-            for spine in ax.spines.values():
-                spine.set_color("white")
+        ax.title.set_color(c)
+        ax.xaxis.label.set_color(c)
+        ax.yaxis.label.set_color(c)
+        ax.tick_params(colors=c)
+        for sp in ax.spines.values():
+            sp.set_color(c)
 
-    im = axs[0].imshow(np.abs(mag_map_2d), cmap="viridis", origin="lower")
-    axs[0].set_title(f"Avg spectral magnitude (z={voxel_z})")
-    plt.colorbar(im, ax=axs[0], fraction=0.046)
-    axs[0].add_patch(Rectangle((voxel_x - 0.5, voxel_y - 0.5), 1, 1,
-                                linewidth=2, edgecolor="green", facecolor="none"))
+    def _wref_overlay(ax):
+        if wref_norm is not None:
+            wref_brain = np.where(mask_2d, wref_norm, np.nan)
+            wref_cmap  = copy.copy(plt.cm.get_cmap("gray"))
+            wref_cmap.set_bad(color=bg)
+            ax.imshow(wref_brain, origin="lower", cmap=wref_cmap, alpha=0.5, zorder=0)
 
-    im1 = axs[1].imshow(np.abs(mag_masked), cmap=cmap, origin="lower",
-                         vmin=0, vmax=threshold)
-    axs[1].set_title("Uncertainty (std, brain mask)")
-    plt.colorbar(im1, ax=axs[1], fraction=0.046)
-    if brain_prior_map is not None:
-        prior_2d = np.asarray(brain_prior_map)
-        if prior_2d.ndim == 3:
-            prior_2d = prior_2d[:, :, voxel_z]
-        axs[1].imshow(prior_2d, cmap="gray", origin="lower", alpha=prior_alpha)
+    def _contour(ax):
+        ax.contour(mask_2d, levels=[0.5], colors=c, linewidths=0.7, zorder=2)
 
-    x_axis = PPM_AXIS if PPM_AXIS is not None else np.arange(npts)
-    c = "white" if dark_mode else "black"
-    axs[2].plot(x_axis, np.real(spec_voxel), label="Real",      color=c)
-    axs[2].plot(x_axis, np.abs(spec_voxel),  label="|S|", alpha=0.7)
-    axs[2].set_title(f"Spectrum  voxel (row={voxel_y}, col={voxel_x})",
-                     color="white" if dark_mode else "black")
-    axs[2].set_xlabel("ppm" if PPM_AXIS is not None else "index",
-                       color="white" if dark_mode else "black")
+    # Panel 1 — mean spectral magnitude
+    cmap_g = copy.copy(plt.cm.get_cmap("viridis"))
+    cmap_g.set_bad(color=bg)
+    _wref_overlay(axs[0])
+    im0 = axs[0].imshow(mean_map, origin="lower", cmap=cmap_g, zorder=1)
+    _contour(axs[0])
+    axs[0].set_title("Mean spectral magnitude")
+    cbar0 = plt.colorbar(im0, ax=axs[0], fraction=0.046)
+    cbar0.ax.yaxis.set_tick_params(color=c)
+    plt.setp(cbar0.ax.get_yticklabels(), color=c)
+    axs[0].plot(voxel_x, voxel_y, "g+", markersize=10, markeredgewidth=2, zorder=3)
+
+    # Panel 2 — posterior std map
+    vmax = threshold if threshold is not None else (
+        float(np.nanpercentile(std_map[mask_2d], 95)) if mask_2d.any() else None
+    )
+    cmap_r = copy.copy(plt.cm.get_cmap("Reds"))
+    cmap_r.set_bad(color=bg)
+    _wref_overlay(axs[1])
+    im1 = axs[1].imshow(std_map, origin="lower", vmin=0, vmax=vmax,
+                          cmap=cmap_r, alpha=0.9, zorder=1)
+    _contour(axs[1])
+    axs[1].set_title("Posterior std (mean over spectrum)")
+    cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046)
+    cbar1.ax.yaxis.set_tick_params(color=c)
+    cbar1.ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.2e}"))
+    plt.setp(cbar1.ax.get_yticklabels(), color=c)
+    axs[1].plot(voxel_x, voxel_y, "g+", markersize=10, markeredgewidth=2, zorder=3)
+
+    # Panel 3 — mean ± std spectrum at selected voxel
+    mu  = np.abs(mean_spec[voxel_y, voxel_x, :])
+    sig = np.abs(std_img[voxel_y,   voxel_x, :])
+    x_axis = PPM_AXIS if PPM_AXIS is not None else np.arange(nt)
+    axs[2].plot(x_axis, mu, color=c, label="Mean")
+    axs[2].fill_between(x_axis, mu - sig, mu + sig, alpha=0.35,
+                         color="tomato", label="±1 std")
+    axs[2].set_title(f"Posterior uncertainty  voxel ({voxel_y},{voxel_x})")
+    axs[2].set_xlabel("ppm" if PPM_AXIS is not None else "index")
+    axs[2].set_ylabel("|Spectrum|")
     if PPM_AXIS is not None:
         axs[2].invert_xaxis()
-    axs[2].set_ylabel("Signal", color="white" if dark_mode else "black")
     axs[2].grid(True, alpha=0.3, color="gray")
-    axs[2].legend(labelcolor="white" if dark_mode else "black",
-                  facecolor="black" if dark_mode else "white")
+    axs[2].legend(labelcolor=c, facecolor=bg)
     if dark_mode:
         axs[2].set_facecolor("black")
         axs[2].tick_params(colors="white")
-        for spine in axs[2].spines.values():
-            spine.set_color("white")
+        for sp in axs[2].spines.values():
+            sp.set_color("white")
 
     plt.tight_layout()
     return fig
@@ -289,43 +296,23 @@ def parse_args():
 
 # ── shared plot helper ────────────────────────────────────────────────────────
 
-def _save_plots(std_img, mean_spec, im_size, brain_mask, PPM_AXIS, args, out_dir, tag):
-    fig_uncert = plot_average_variation(
-        spice_test       = std_img,
-        img_shape        = im_size,
-        voxel_x          = args.voxel_x,
-        voxel_y          = args.voxel_y,
-        voxel_z          = 0,
-        phi0             = 0,
-        brain_mask_inner = brain_mask,
-        PPM_AXIS         = PPM_AXIS,
-        threshold        = args.threshold,
-        dark_mode        = args.dark_mode,
+def _save_plots(std_img, mean_spec, im_size, brain_mask, wref_norm, PPM_AXIS, args, out_dir, tag):
+    fig = plot_average_variation(
+        mean_spec  = mean_spec,
+        std_img    = std_img,
+        img_shape  = im_size,
+        voxel_x    = args.voxel_x,
+        voxel_y    = args.voxel_y,
+        wref_norm  = wref_norm,
+        brain_mask = brain_mask,
+        PPM_AXIS   = PPM_AXIS,
+        threshold  = args.threshold,
+        dark_mode  = args.dark_mode,
     )
-    uncert_path = os.path.join(out_dir, f"fig_09_{tag}_uncert_map.png")
-    fig_uncert.savefig(uncert_path, dpi=150, bbox_inches="tight",
-                       facecolor=fig_uncert.get_facecolor())
-    plt.close(fig_uncert)
-    print(f"[uncert-post] Saved {uncert_path}")
-
-    fig_mean = plot_average_variation(
-        spice_test       = mean_spec,
-        img_shape        = im_size,
-        voxel_x          = args.voxel_x,
-        voxel_y          = args.voxel_y,
-        voxel_z          = 0,
-        phi0             = 0,
-        brain_mask_inner = brain_mask,
-        PPM_AXIS         = PPM_AXIS,
-        threshold        = None,
-        dark_mode        = args.dark_mode,
-        cmap             = "viridis",
-    )
-    mean_path = os.path.join(out_dir, f"fig_09_{tag}_spice_mean.png")
-    fig_mean.savefig(mean_path, dpi=150, bbox_inches="tight",
-                     facecolor=fig_mean.get_facecolor())
-    plt.close(fig_mean)
-    print(f"[uncert-post] Saved {mean_path}")
+    out_path = os.path.join(out_dir, f"fig_09_{tag}_uncert_map.png")
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    print(f"[uncert-post] Saved {out_path}")
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -392,7 +379,7 @@ def main():
 
         np.save(os.path.join(out_dir, "posterior_std.npy"), std_img)
         print(f"[uncert-post] Saved posterior_std.npy  shape={std_img.shape}")
-        _save_plots(std_img, mean_spec, im_size, brain_mask, PPM_AXIS, args, out_dir, "voxelwise")
+        _save_plots(std_img, mean_spec, im_size, brain_mask, wref_norm, PPM_AXIS, args, out_dir, "voxelwise")
 
     # ── Mode: lobpcg ─────────────────────────────────────────────────────────
     else:
@@ -420,7 +407,7 @@ def main():
 
         np.save(os.path.join(out_dir, "posterior_std.npy"), std_img)
         print(f"[uncert-post] Saved posterior_std.npy  shape={std_img.shape}")
-        _save_plots(std_img, mean_spec, im_size, brain_mask, PPM_AXIS, args, out_dir, "lobpcg")
+        _save_plots(std_img, mean_spec, im_size, brain_mask, wref_norm, PPM_AXIS, args, out_dir, "lobpcg")
 
     print("[uncert-post] Done.")
 

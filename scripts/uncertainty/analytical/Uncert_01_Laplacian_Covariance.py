@@ -44,7 +44,7 @@ from scipy.ndimage import binary_erosion
 from scipy.sparse.linalg import LinearOperator, cg
 from tqdm import tqdm
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from utils.scan_params import load_scan_params
 from utils.utils import (
     NUFFTOp, calc_Bmatrix, read_training_data_from_csv, Calc_B0_matrix_mx,
@@ -378,6 +378,9 @@ def main():
     vox_list = np.flatnonzero(brain_mask.ravel())[args.vox_start:args.vox_end]
     print(f"[uncert] Voxel slice [{args.vox_start}:{args.vox_end}]  "
           f"count={len(vox_list)}  max_workers={args.max_workers} …")
+    if len(vox_list) == 0:
+        print("[uncert] No voxels in this slice — exiting.")
+        return
 
     with ProcessPoolExecutor(
         max_workers=args.max_workers,

@@ -226,13 +226,24 @@ def main():
     B0_FAKE = np.ones_like(B0_mat) # for no b0 correction needed
 
     # ── Reference NIfTI affine ────────────────────────────────────────────────
-    ref_nii = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
-    try:
-        ref_img_obj = Image(ref_nii)
+    # Priority: (1) --ref-nii arg, (2) affine.npy saved by data_proc_01_twix2npy,
+    # (3) subject-specific reference NIfTI in data_dir, (4) identity
+    _affine_npy = data_dir + "affine.npy"
+    if args.ref_nii:
+        ref_img_obj = Image(args.ref_nii)
         affine      = ref_img_obj.voxToWorldMat
-    except Exception:
+    elif os.path.exists(_affine_npy):
+        affine      = np.load(_affine_npy)
         ref_img_obj = None
-        affine      = np.eye(4)
+        print(f"[iter-recon] Loaded affine from {_affine_npy}")
+    else:
+        ref_nii = data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz"
+        try:
+            ref_img_obj = Image(ref_nii)
+            affine      = ref_img_obj.voxToWorldMat
+        except Exception:
+            ref_img_obj = None
+            affine      = np.eye(4)
 
     # ── Run iterative NUFFT recon ─────────────────────────────────────────────
     print(f"[iter-recon] Running CG  maxiter={args.maxiter}  solver={args.solver} …")
@@ -260,7 +271,7 @@ def main():
 
     # ── Save as NIfTI-MRS (FID) ───────────────────────────────────────────────
     for fname, data in [("iter_recon.nii.gz", recon_3d), ("adjoint.nii.gz", b_init_3d)]:
-        nii_data = data.transpose(1, 0, 2)[:, :, np.newaxis, :]  # (Nx, Ny, 1, N_SEQ)
+        nii_data = np.ascontiguousarray(data.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]  # (Nx, Ny, 1, N_SEQ)
         gen_nifti_mrs(nii_data.conj(), dwelltime=TS, spec_freq=297.219, affine=affine).save(
             os.path.join(out_dir, fname))
         print(f"[iter-recon] Saved {fname}")

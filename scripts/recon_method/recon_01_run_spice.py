@@ -303,13 +303,24 @@ def main():
     np.save(os.path.join(out_dir, "SPICE_f.npy"), spice_est)
     np.save(os.path.join(out_dir, "U_est.npy"),   est_U)
 
-    ref_img_path = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
-    try:
-        ref_img_obj = Image(ref_img_path)
+    # Priority: (1) --ref-nii arg, (2) affine.npy saved by data_proc_01_twix2npy,
+    # (3) subject-specific reference NIfTI in data_dir, (4) identity
+    _affine_npy = data_dir + "affine.npy"
+    if args.ref_nii:
+        ref_img_obj = Image(args.ref_nii)
         affine      = ref_img_obj.voxToWorldMat
-    except Exception:
+    elif os.path.exists(_affine_npy):
+        affine      = np.load(_affine_npy)
         ref_img_obj = None
-        affine      = np.eye(4)
+        print(f"[spice] Loaded affine from {_affine_npy}")
+    else:
+        ref_img_path = data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz"
+        try:
+            ref_img_obj = Image(ref_img_path)
+            affine      = ref_img_obj.voxToWorldMat
+        except Exception:
+            ref_img_obj = None
+            affine      = np.eye(4)
 
     spice_3d = spice_est.reshape(Ny, Nx, N_SEQ)
 
@@ -329,13 +340,13 @@ def main():
     spice_phcorr = FIDToSpec(spice_phcorr_f, axis=-1)
 
     # ── Save NIfTI-MRS ────────────────────────────────────────────────────────────
-    spice_save = spice_phcorr_f.transpose(1, 0, 2)[:, :, np.newaxis, :]
+    spice_save = np.ascontiguousarray(spice_phcorr_f.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     gen_nifti_mrs(spice_save.conj(), dwelltime=TS, spec_freq=297.219, affine=affine).save(
         os.path.join(out_dir, "SPICE_result.nii.gz"))
     print("[spice] Saved SPICE_result.nii.gz")
 
     # ── Save U and V as NIfTI ─────────────────────────────────────────────────
-    U_nii = est_U.reshape(Ny, Nx, args.rank).transpose(1, 0, 2)[:, :, np.newaxis, :].conj().astype(np.complex64)
+    U_nii = np.ascontiguousarray(est_U.reshape(Ny, Nx, args.rank).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :].conj().astype(np.complex64)
     Image(U_nii, xform=affine).save(os.path.join(out_dir, "U_subspace.nii.gz"))
 
     V_nmrs = np.tile(V[np.newaxis, np.newaxis, np.newaxis, :, :], (Nx, Ny, 1, 1, 1)).conj()

@@ -34,11 +34,20 @@ build/
 *.swo
 *~
 
+# One-off visualization scripts (not part of the pipeline)
+viz_basis.py
+viz_traj.py
+basis_functions.pdf
+basis_functions.png
+traj_3d.pdf
+traj_3d.png
+
 # Experimental / work-in-progress scripts (kept local only)
 scripts/recon_method/04b_SPICE_refit.py
 scripts/recon_method/04c_SPICE_uoss_refit.py
 scripts/recon_method/04d_SPICE_lam20_refit.py
 scripts/uncertainty/analytical/08b_Laplacian_Covariance_joint.py
+scripts/uncertainty/analytical/Uncert_00_cleanup_hessian.py
 
 # HPC submission scripts
 *.sh

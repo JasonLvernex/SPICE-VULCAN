@@ -207,7 +207,7 @@ def main():
         wref_img, args.brain_threshold, args.brain_erosion)
 
     # ── Save adj NUFFT before lipid removal (unmasked, lipid ring visible) ──────
-    fid_adj = SpecToFID(image_blurry, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
+    fid_adj = np.ascontiguousarray(SpecToFID(image_blurry, axis=-1).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     gen_nifti_mrs(fid_adj, dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "adj_bf_lprm.nii.gz"))
     print("[lipidrm] Saved adj_bf_lprm.nii.gz")
@@ -305,7 +305,7 @@ def main():
     mrsi_lprm_4d                      = mrsi_lprm_masked[:, :, np.newaxis, :]
 
     # ── Save lipid-free NIfTI before phase correction ─────────────────────────────
-    _pre_ph_fid = SpecToFID(mrsi_lprm_masked, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
+    _pre_ph_fid = np.ascontiguousarray(SpecToFID(mrsi_lprm_masked, axis=-1).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     gen_nifti_mrs(_pre_ph_fid, dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "mrsi_lprm_pre_phcorr.nii.gz"))
     print("[lipidrm] Saved mrsi_lprm_pre_phcorr.nii.gz")
@@ -338,7 +338,7 @@ def main():
 
     # ── Save NIfTI ────────────────────────────────────────────────────────────────
     lprm_3d  = mrsi_lprm_4d[:, :, 0, :]                             # (Ny, Nx, T) spectrum
-    save_fid = SpecToFID(lprm_3d, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
+    save_fid = np.ascontiguousarray(SpecToFID(lprm_3d, axis=-1).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     gen_nifti_mrs(save_fid, dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "adj_bf_spice_crs_cr.nii.gz"))
     print("[lipidrm] Saved adj_bf_spice_crs_cr.nii.gz")
@@ -350,7 +350,7 @@ def main():
     print(f"[lipidrm] Saved kt_mrsi_lprm.npy  shape={kt_mrsi_lprm.shape}")
 
     # ── Save NIfTI for SPICE ──────────────────────────────────────────────────────
-    mrsi_lprm_f   = SpecToFID(lprm_3d, axis=-1).transpose(1, 0, 2)[:, :, np.newaxis, :]
+    mrsi_lprm_f   = np.ascontiguousarray(SpecToFID(lprm_3d, axis=-1).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
     gen_nifti_mrs(mrsi_lprm_f, dwelltime=TS, spec_freq=297.219,
                   affine=affine).save(os.path.join(out_dir, "my_mrsi_lprm_f.nii.gz"))
     print("[lipidrm] Saved my_mrsi_lprm_f.nii.gz")
