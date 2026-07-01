@@ -438,6 +438,39 @@ def main():
     print(f"[step12] Saved conc_std_analytical.npy          shape={conc_std.shape}")
     print(f"[step12] Saved conc_std_analytical_internal.npy shape={conc_std_internal.shape}")
 
+    # ── Save NIfTI + symlink into spice_fit/uncertainties/ for FSLeyes ───────
+    fit_uncert_dir = Path(fit_dir) / "uncertainties"
+    if fit_uncert_dir.exists():
+        _ref_conc = Path(fit_dir) / "concs" / "raw" / f"{metab_names[0]}.nii.gz"
+        _nii_aff  = nib.load(str(_ref_conc)).affine if _ref_conc.exists() else np.eye(4)
+
+        def _save_and_link(arr_ny_nx, name):
+            nii_data = np.ascontiguousarray(arr_ny_nx.T[::-1, :]).astype(np.float32)
+            nii_path = os.path.join(out_dir, f"anal_{name}_sd.nii.gz")
+            nib.save(nib.Nifti1Image(nii_data[:, :, np.newaxis], _nii_aff), nii_path)
+            dst = fit_uncert_dir / f"anal_{name}_sd.nii.gz"
+            if dst.is_symlink() or dst.exists():
+                dst.unlink()
+            dst.symlink_to(os.path.abspath(nii_path))
+
+        for k_idx, name in enumerate(metab_names):
+            _save_and_link(conc_std[:, :, k_idx], name)
+        for name, arr in combined_stds.items():
+            _save_and_link(arr, name)
+        print(f"[step12] Saved + symlinked anal_*_sd.nii.gz → {fit_uncert_dir}")
+
+        tree_path = Path(fit_dir) / "mrsi.tree"
+        if tree_path.exists():
+            tree_txt = tree_path.read_text()
+            entry = "    anal_{metab}_sd.nii.gz                  (anal-sd)\n"
+            if "anal_{metab}_sd.nii.gz" not in tree_txt:
+                tree_txt = tree_txt.replace(
+                    "    {metab}_sd.nii.gz                       (sd)\n",
+                    "    {metab}_sd.nii.gz                       (sd)\n" + entry,
+                )
+                tree_path.write_text(tree_txt)
+                print(f"[step12] Patched mrsi.tree with anal-sd entry")
+
     # ── Plot ─────────────────────────────────────────────────────────────────
     for meta in args.plot_metabs:
         # Individual metabolite — raw

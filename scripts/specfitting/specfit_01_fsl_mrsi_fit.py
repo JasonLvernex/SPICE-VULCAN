@@ -324,33 +324,52 @@ def main():
     subprocess.run(cmd, env=os.environ.copy(), check=True)
     print(f"[fitting/fsl_mrsi] Done → {fsl_out}")
 
-    # ── Copy U / V / aligned into spice_fit/fit/ for FSLeyes filetree ────────
+    # ── Symlink pipeline outputs into spice_fit/ subfolders for FSLeyes ─────
     fit_subdir = os.path.join(fsl_out, "fit")
-    for fname, src in [
-        ("U_subspace.nii.gz",    os.path.join(spice_dir, "U_subspace.nii.gz")),
-        ("V_subspace.nii.gz",    os.path.join(spice_dir, "V_subspace.nii.gz")),
-        ("spice_aligned.nii.gz", aligned_nii),
-    ]:
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(fit_subdir, fname))
-            print(f"[fitting] Copied {fname} → {fit_subdir}")
-        else:
-            print(f"[warn] {src} not found, skipping")
 
-    # ── Patch mrsi.tree: add fit-aligned / fit-U / fit-V entries ─────────────
+    def _symlink(src, dst_name, subdir):
+        """Absolute-path symlink subdir/dst_name → src. No-op if src missing."""
+        if not os.path.exists(src):
+            return False
+        dst = os.path.join(subdir, dst_name)
+        if os.path.islink(dst) or os.path.exists(dst):
+            os.unlink(dst)
+        os.symlink(os.path.abspath(src), dst)
+        print(f"[fitting] Symlinked {dst_name}")
+        return True
+
+    b0map_dir      = os.path.join(args.out_dir, "b0map")
+    lprm_dir_link  = os.path.join(args.out_dir, "lipid_removal")
+    adj_dir        = os.path.join(args.out_dir, "adjoint_test")
+
+    fit_symlinks = [
+        # (dst_name, src_path, tree_type_label)
+        ("spice_aligned.nii.gz",  aligned_nii,                                        "fit-aligned"),
+        ("U_subspace.nii.gz",     os.path.join(spice_dir, "U_subspace.nii.gz"),       "fit-U"),
+        ("V_subspace.nii.gz",     os.path.join(spice_dir, "V_subspace.nii.gz"),       "fit-V"),
+        ("SPICE_result.nii.gz",   os.path.join(spice_dir, "SPICE_result.nii.gz"),     "spice-result"),
+        ("adj_recon.nii.gz",      os.path.join(adj_dir,   "adj_recon.nii.gz"),        "adj-recon"),
+        ("wref_adj_nufft.nii.gz", os.path.join(b0map_dir, "wref_adj_nufft.nii.gz"),  "wref"),
+        ("my_mrsi_lprm_f.nii.gz", os.path.join(lprm_dir_link, "my_mrsi_lprm_f.nii.gz"), "lprm-mrsi"),
+    ]
+
+    created = [(n, t) for n, s, t in fit_symlinks if _symlink(s, n, fit_subdir)]
+
+    # ── Patch mrsi.tree with symlinked entries ────────────────────────────────
     tree_path = os.path.join(fsl_out, "mrsi.tree")
-    if os.path.exists(tree_path):
+    if os.path.exists(tree_path) and created:
         with open(tree_path) as f:
             tree_txt = f.read()
-        new_entries = (
-            "    spice_aligned.nii.gz                   (fit-aligned)\n"
-            "    U_subspace.nii.gz                      (fit-U)\n"
-            "    V_subspace.nii.gz                      (fit-V)\n"
+        new_entries = "".join(
+            f"    {name:<38} ({label})\n"
+            for name, label in created
+            if name not in tree_txt
         )
-        tree_txt = tree_txt.replace("uncertainties\n", new_entries + "uncertainties\n")
-        with open(tree_path, "w") as f:
-            f.write(tree_txt)
-        print(f"[fitting] Patched mrsi.tree with fit-aligned / fit-U / fit-V")
+        if new_entries:
+            tree_txt = tree_txt.replace("uncertainties\n", new_entries + "uncertainties\n")
+            with open(tree_path, "w") as f:
+                f.write(tree_txt)
+            print(f"[fitting] Patched mrsi.tree with {len(created)} fit entries")
 
     # ── Load & plot concentration maps ────────────────────────────────────────
     try:

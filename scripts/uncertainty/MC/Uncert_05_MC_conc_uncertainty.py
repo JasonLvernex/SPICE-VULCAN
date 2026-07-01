@@ -550,6 +550,38 @@ def main():
     print(f"[mc-fit] Saved output_concs shape={output_concs_arr.shape}")
     print(f"[mc-fit] Saved conc_std shape={conc_std.shape}")
 
+    # ── Save NIfTI + symlink into spice_fit/uncertainties/ for FSLeyes ───────
+    spice_fit_dir  = Path(args.out_dir) / _tg("fitting") / "spice_fit"
+    fit_uncert_dir = spice_fit_dir / "uncertainties"
+    if fit_uncert_dir.exists():
+        _ref_conc = spice_fit_dir / "concs" / "raw" / f"{metab_names_ref[0]}.nii.gz"
+        _nii_aff  = nib.load(str(_ref_conc)).affine if _ref_conc.exists() else np.eye(4)
+
+        def _save_and_link_mc(arr_ny_nx, name):
+            nii_data = np.ascontiguousarray(arr_ny_nx.T[::-1, :]).astype(np.float32)
+            nii_path = os.path.join(out_dir, f"mc_{name}_sd.nii.gz")
+            nib.save(nib.Nifti1Image(nii_data[:, :, np.newaxis], _nii_aff), nii_path)
+            dst = fit_uncert_dir / f"mc_{name}_sd.nii.gz"
+            if dst.is_symlink() or dst.exists():
+                dst.unlink()
+            dst.symlink_to(os.path.abspath(nii_path))
+
+        for k_idx, name in enumerate(metab_names_ref):
+            _save_and_link_mc(conc_std[:, :, k_idx], name)
+        print(f"[mc-fit] Saved + symlinked mc_*_sd.nii.gz → {fit_uncert_dir}")
+
+        tree_path = spice_fit_dir / "mrsi.tree"
+        if tree_path.exists():
+            tree_txt = tree_path.read_text()
+            entry = "    mc_{metab}_sd.nii.gz                    (mc-sd)\n"
+            if "mc_{metab}_sd.nii.gz" not in tree_txt:
+                tree_txt = tree_txt.replace(
+                    "    {metab}_sd.nii.gz                       (sd)\n",
+                    "    {metab}_sd.nii.gz                       (sd)\n" + entry,
+                )
+                tree_path.write_text(tree_txt)
+                print(f"[mc-fit] Patched mrsi.tree with mc-sd entry")
+
     # ── Plot ──────────────────────────────────────────────────────────────────
     for meta in plot_metabs:
         if meta not in metab_names_ref:
