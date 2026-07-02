@@ -2,12 +2,11 @@
 """
 Step 7 — Spectral fitting of SPICE reconstruction.
 
-Reads  : <out_dir>/spice_<run_tag>/SPICE_f.npy    (raw SPICE FID; tag e.g. w5000_l0.0001)
-         OR --spice-npy <path>                   (explicit override)
-         <data_dir>/wref_o.npy                   (water reference for brain mask)
-         <fit-basis-dir>/                         (FSL-MRS fitting basis)
-Writes : <out_dir>/fitting_<run_tag>/spice_aligned.nii.gz
-         <out_dir>/fitting_<run_tag>/brain_mask.nii.gz
+Reads  : <out_dir>/spice_<run_tag>/SPICE_phcorr.nii.gz  (xcorr-aligned output from recon_01)
+         OR --spice-phcorr <path>                        (explicit override)
+         <data_dir>/wref_o.npy                           (water reference for brain mask)
+         <fit-basis-dir>/                                (FSL-MRS fitting basis)
+Writes : <out_dir>/fitting_<run_tag>/brain_mask.nii.gz
          <out_dir>/fitting_<run_tag>/spice_fit/   (fsl_mrsi output directory)
          <out_dir>/fitting_<run_tag>/conc_maps.npy
          <out_dir>/fitting_<run_tag>/fig_05_*.png
@@ -40,18 +39,15 @@ from scipy.ndimage import binary_erosion
 from warnings import filterwarnings
 filterwarnings("ignore")
 
-from fsl_mrs.utils import mrs_io
 from fsl_mrs.utils.misc import FIDToSpec
-from fsl_mrs.utils.synthetic import syntheticFromBasisFile
-from fsl_mrs.core.nifti_mrs import gen_nifti_mrs
+from fsl_mrs.core.nifti_mrs import NIFTI_MRS as NIFTI_MRS_fsl
 from fsl.data.image import Image
 
-# project root → utils package + xcorr
+# project root → utils package
 _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 
-from utils.xcorr import my_mrsi_freq_align
 from utils.utils import plot_voxel_spectrum_and_maps
 
 
@@ -78,7 +74,7 @@ def load_concentration_maps(fit_dir):
             data = data[:, :, 0]
         if data.ndim != 2:
             raise ValueError(f"{f.name}: expected 2-D after squeeze, got {data.shape}")
-        conc_maps[name] = data.T
+        conc_maps[name] = data.T[:, ::-1]
     return conc_maps
 
 
@@ -126,15 +122,14 @@ def parse_args():
     p.add_argument("--data-dir",         required=True,
                    help="Scan data directory (contains wref_o.npy)")
     p.add_argument("--basis-dir",        required=True,
-                   help="Training basis dir (same as step 04; used to build basis_nmrs for xcorr)")
+                   help="Training basis dir (same as recon_01; also used as fit basis if --fit-basis-dir not set)")
     p.add_argument("--fit-basis-dir",    default=None,
                    help="Fitting basis directory for fsl_mrsi (defaults to --basis-dir)")
     p.add_argument("--out-dir",          default=None,
                    help="Output directory (default: ./output/<subject_id> derived from --data-dir)")
-    p.add_argument("--spice-npy",        default=None,
-                   help="Path to SPICE FID .npy (overrides default "
-                        "<out_dir>/spice/SPICE_f.npy; use for 04c output: "
-                        "<out_dir>/spice_refit_uoss/SPICE_refit_f.npy)")
+    p.add_argument("--spice-phcorr",     default=None,
+                   help="Path to SPICE_phcorr.nii.gz (overrides default "
+                        "<out_dir>/spice_<run_tag>/SPICE_phcorr.nii.gz)")
     p.add_argument("--ref-nii",          default=None,
                    help="Reference NIfTI for affine (optional)")
     # Spectral / acquisition (must match step 04)
@@ -212,16 +207,17 @@ def main():
             affine = np.eye(4)
             print("[fitting] WARNING: affine.npy not found; using identity — run data_proc_01_twix2npy")
 
-    # ── Load raw SPICE FID ────────────────────────────────────────────────────
-    spice_f_path = args.spice_npy or os.path.join(spice_dir, "SPICE_f.npy")
-    if not os.path.exists(spice_f_path):
+    # ── Load SPICE_phcorr (xcorr-aligned output from recon_01) ───────────────
+    phcorr_path = args.spice_phcorr or os.path.join(spice_dir, "SPICE_phcorr.nii.gz")
+    if not os.path.exists(phcorr_path):
         raise FileNotFoundError(
-            f"SPICE FID not found at {spice_f_path}\n"
-            "Run step 04 (04_run_spice.py) or pass --spice-npy to a 04c output."
+            f"SPICE_phcorr not found at {phcorr_path}\n"
+            "Run recon_01 first or pass --spice-phcorr to an alternate path."
         )
-    print(f"[fitting] Loading {spice_f_path} ...")
-    spice_est = np.load(spice_f_path)               # (N_Vox, N_SEQ) or (Ny*Nx, N_SEQ)
-    spice_3d  = spice_est.reshape(Ny, Nx, N_SEQ)    # (Ny, Nx, N_SEQ), FID
+    print(f"[fitting] Loading {phcorr_path} ...")
+    aligned_nmrs = NIFTI_MRS_fsl(phcorr_path)
+    aligned_nii  = phcorr_path
+    aligned_data = np.array(aligned_nmrs.image[:, :, 0, :]).transpose(1, 0, 2)[:, ::-1, :].conj()  # (Ny, Nx, N_SEQ)
 
     # ── Brain mask ────────────────────────────────────────────────────────────
     wref_img  = np.load(data_dir + "wref_o.npy", mmap_mode="r")
@@ -235,63 +231,14 @@ def main():
     Image(np.ascontiguousarray((wref_2d * brain_mask).astype(np.float32).T[::-1, :])).save(mask_nii)
     print(f"[fitting] Brain mask saved → {mask_nii}")
 
-    # ── Visualise raw SPICE spectrum ──────────────────────────────────────────
-    _, fig_pre, _ = plot_voxel_spectrum_and_maps(
-        FIDToSpec(spice_3d, axis=-1), (Ny, Nx, N_SEQ),
-        voxel_x=args.voxel_x, voxel_y=args.voxel_y,
-        brain_mask_inner=brain_mask_inner,
-        PPM_AXIS=PPM_AXIS, show=False,
-    )
-    fig_pre.savefig(os.path.join(fit_dir, "fig_05a_spice_raw.png"), dpi=120)
-    plt.close(fig_pre)
-
-    # ── Build basis_nmrs (reference for xcorr) ────────────────────────────────
-    print("[fitting] Building basis_nmrs for xcorr ...")
-    fullbasis = mrs_io.read_basis(args.basis_dir)
-    fid_ref, emptymrs, _ = syntheticFromBasisFile(
-        fullbasis,
-        noisecovariance=[[0]],
-        bandwidth=sweepwidth,
-        points=N_SEQ,
-    )
-    basis_nmrs = gen_nifti_mrs(
-        fid_ref.conj().reshape(1, 1, 1, N_SEQ),
-        dwelltime=emptymrs.dwellTime,
-        spec_freq=emptymrs.centralFrequency,
-        affine=affine,
-    )
-    fig_basis = basis_nmrs.plot(ppmlim=(0, 10))
-    fig_basis.savefig(os.path.join(fit_dir, "fig_05_basis_nmrs.png"), dpi=150)
-    plt.close(fig_basis)
-    print(f"[fitting] basis_nmrs plot saved → {os.path.join(fit_dir, 'fig_05_basis_nmrs.png')}")
-
-    # ── Wrap SPICE FID in NIfTI-MRS ──────────────────────────────────────────
-    # NIfTI-MRS layout: (Nx, Ny, 1, npts)  (x-axis first)
-    mrsi_f_4 = np.ascontiguousarray(spice_3d.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
-    nifti_spice = gen_nifti_mrs(
-        mrsi_f_4,
-        dwelltime=TS,
-        spec_freq=297.219,
-        affine=affine,
-    )
-
-    # ── xcorr frequency alignment ─────────────────────────────────────────────
-    print("[fitting] Running xcorr frequency alignment ...")
-    aligned_nmrs, _ = my_mrsi_freq_align(nifti_spice, basis_nmrs)
-
-    aligned_nii = os.path.join(fit_dir, "spice_aligned.nii.gz")
-    aligned_nmrs.save(aligned_nii)
-    print(f"[fitting] Freq-aligned NIfTI saved → {aligned_nii}")
-
-    # Visualise after alignment
-    aligned_data = np.array(aligned_nmrs.image[:, :, 0, :]).transpose(1, 0, 2)[:, ::-1, :].conj()  # (Ny, Nx, N_SEQ)
+    # ── Visualise phcorr spectrum ─────────────────────────────────────────────
     _, fig_aln, _ = plot_voxel_spectrum_and_maps(
         FIDToSpec(aligned_data, axis=-1), (Ny, Nx, N_SEQ),
         voxel_x=args.voxel_x, voxel_y=args.voxel_y,
         brain_mask_inner=brain_mask_inner,
         PPM_AXIS=PPM_AXIS, show=False,
     )
-    fig_aln.savefig(os.path.join(fit_dir, "fig_05b_spice_aligned.png"), dpi=120)
+    fig_aln.savefig(os.path.join(fit_dir, "fig_05a_spice_phcorr.png"), dpi=120)
     plt.close(fig_aln)
 
     # ── fsl_mrsi ──────────────────────────────────────────────────────────────

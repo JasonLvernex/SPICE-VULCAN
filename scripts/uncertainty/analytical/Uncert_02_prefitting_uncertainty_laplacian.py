@@ -34,14 +34,14 @@ Usage:
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
-        --rank 20 --n-samples 100
+        --rank 20 --n-samples 100 --brain-threshold 0.16 [--threshold 2.5e-6]
 
     # lobpcg — requires step 10 LOBPCG outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
         --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
-        --rank 20 --n-samples 100
+        --rank 20 --n-samples 100 --brain-threshold 0.16 [--threshold 2.5e-6]
 """
 
 import argparse

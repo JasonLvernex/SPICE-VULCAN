@@ -39,18 +39,26 @@ import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
+plt.rcParams["axes.prop_cycle"] = plt.cycler(color=[
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+])
 import numpy as np
 import mrinufft
 from scipy.sparse.linalg import LinearOperator
 from scipy.ndimage import binary_erosion
 from warnings import filterwarnings
 filterwarnings("ignore")
+import nibabel as nib
 
 from fsl_mrs.utils import mrs_io
 from fsl_mrs.utils.misc import FIDToSpec
 from fsl_mrs.utils.plotting import FID2Spec
+from fsl_mrs.utils.synthetic import syntheticFromBasisFile
 from fsl.data.image import Image
 from nifti_mrs.create_nmrs import gen_nifti_mrs
+from fsl_mrs.core.nifti_mrs import gen_nifti_mrs as gen_nifti_mrs_fsl
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
@@ -67,9 +75,9 @@ from utils.utils import (
     plot_voxel_sum_map,
     Calc_B0_matrix,
     NUFFTOp,
-    phase_corr,
     build_nufft_ops,
 )
+from utils.xcorr import my_mrsi_freq_align
 
 
 def parse_args():
@@ -221,6 +229,17 @@ def main():
     )
     WW = W_edge.conj().T @ W_edge
 
+    wref_masked = wref_norm * brain_mask
+
+    if args.save_plots:
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.imshow(wref_masked, origin="lower", cmap="gray")
+        ax.set_title("wref_o (masked)")
+        plt.tight_layout()
+        fig.savefig(os.path.join(out_dir, "fig_04_wref_masked.png"), dpi=120)
+        plt.close(fig)
+        print("[spice] Saved fig_04_wref_masked.png")
+
     if args.save_plots:
         edge_index = [tuple(pair) for pair in Nb]
 
@@ -322,28 +341,38 @@ def main():
             ref_img_obj = None
             affine      = np.eye(4)
 
+    wref_nii = nib.Nifti1Image(wref_masked[:, :, np.newaxis].astype(np.float32), affine)
+    wref_nii.header.set_xyzt_units("mm")
+    nib.save(wref_nii, os.path.join(out_dir, "wref_masked.nii.gz"))
+    print("[spice] Saved wref_masked.nii.gz")
+
     spice_3d = spice_est.reshape(Ny, Nx, N_SEQ)
 
-    # ── Phase correction ─────────────────────────────────────────────────────────
-    print(f"[spice] Phase correction  ppmlim={args.phase_ppmlim} …")
-    spice_phcorr_f = phase_corr(
-        spice_3d,
-        mag_map_2d = wref_norm,
-        brain_mask = brain_mask_inner,
-        TS         = TS,
-        img_shape  = Dim_Voxel,
-        out_dir    = out_dir,
-        ppmlim     = args.phase_ppmlim,
-        ref_img    = ref_img_obj,
-        out_fname  = "SPICE_phcorr",
-    )
-    spice_phcorr = FIDToSpec(spice_phcorr_f, axis=-1)
-
-    # ── Save NIfTI-MRS ────────────────────────────────────────────────────────────
-    spice_save = np.ascontiguousarray(spice_phcorr_f.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
-    gen_nifti_mrs(spice_save.conj(), dwelltime=TS, spec_freq=297.219, affine=affine).save(
+    # ── Save raw SPICE result (pre-alignment) ─────────────────────────────────────
+    spice_raw_save = np.ascontiguousarray(spice_3d.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
+    gen_nifti_mrs(spice_raw_save, dwelltime=TS, spec_freq=297.219, affine=affine).save(
         os.path.join(out_dir, "SPICE_result.nii.gz"))
     print("[spice] Saved SPICE_result.nii.gz")
+
+    # ── xcorr frequency alignment (replaces FSL-MRS phase_corr) ─────────────────
+    print("[spice] xcorr frequency alignment …")
+    fid_ref, emptymrs, _ = syntheticFromBasisFile(
+        fullbasis, noisecovariance=[[0]], bandwidth=sweepwidth, points=N_SEQ)
+    basis_nmrs = gen_nifti_mrs_fsl(
+        fid_ref.conj().reshape(1, 1, 1, N_SEQ),
+        dwelltime=emptymrs.dwellTime,
+        spec_freq=emptymrs.centralFrequency,
+        affine=affine,
+    )
+    spice_nii = gen_nifti_mrs(
+        np.ascontiguousarray(spice_3d.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :],
+        dwelltime=TS, spec_freq=297.219, affine=affine,
+    )
+    spice_aligned_nmrs, _ = my_mrsi_freq_align(spice_nii, basis_nmrs)
+    spice_aligned_nmrs.save(os.path.join(out_dir, "SPICE_phcorr.nii.gz"))
+    print("[spice] Saved SPICE_phcorr.nii.gz")
+    spice_phcorr_f = np.array(spice_aligned_nmrs.image[:, :, 0, :]).transpose(1, 0, 2)[:, ::-1, :].conj()
+    spice_phcorr = FIDToSpec(spice_phcorr_f, axis=-1)
 
     # ── Save U and V as NIfTI ─────────────────────────────────────────────────
     U_nii = np.ascontiguousarray(est_U.reshape(Ny, Nx, args.rank).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :].conj().astype(np.complex64)

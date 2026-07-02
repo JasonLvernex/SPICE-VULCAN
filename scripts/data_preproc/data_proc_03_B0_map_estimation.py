@@ -27,11 +27,17 @@ import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.style.use("dark_background")
+plt.rcParams["axes.prop_cycle"] = plt.cycler(color=[
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+])
 from matplotlib.patches import Rectangle
 import numpy as np
 from scipy.ndimage import binary_erosion, gaussian_filter, distance_transform_edt
 from warnings import filterwarnings
 filterwarnings("ignore")
+import nibabel as nib
 
 import mrinufft
 from fsl_mrs.utils.misc import FIDToSpec, SpecToFID
@@ -262,6 +268,7 @@ def main():
             ref_img    = ref_img_obj,
             out_fname  = "wref_phcorr_nifti",
             method     = phase_method,
+            affine     = affine,
         )
     # wref_phcorr_f: (Ny, Nx, T) — conjugated phase-corrected FID (matches notebook)
     wref_phcorr = FIDToSpec(np.array(wref_phcorr_f), axis=-1)   # spectrum for plotting
@@ -310,7 +317,7 @@ def main():
 
     if args.save_plots:
         fig, ax = plt.subplots(figsize=(6, 5))
-        im = ax.imshow(b0_shift_hz_img, origin="lower")
+        im = ax.imshow(b0_shift_hz_img, origin="lower", cmap="gray")
         plt.colorbar(im, ax=ax, label="B0 offset (Hz)")
         ax.set_title("B0 shift (Hz) — raw fit")
         plt.tight_layout()
@@ -325,7 +332,7 @@ def main():
         B0_fill_smoothed[~brain_mask] = np.nan
         if args.save_plots:
             fig, ax = plt.subplots(figsize=(6, 5))
-            im = ax.imshow(B0_fill_smoothed, origin="lower")
+            im = ax.imshow(B0_fill_smoothed, origin="lower", cmap="gray")
             plt.colorbar(im, ax=ax, label="B0 offset smoothed (Hz)")
             ax.set_title(f"B0 map smoothed  σ={args.smooth_sigma}")
             plt.tight_layout()
@@ -346,12 +353,15 @@ def main():
     B0_final = B0_fill_smoothed
     np.save(os.path.join(out_dir, "B0_map_pk.npy"), B0_final)
     np.save(os.path.join(out_dir, "B0_map.npy"),    B0_final)
-    print(f"[b0_corr] Saved B0_map.npy  "
+    b0_nii = nib.Nifti1Image(B0_final[:, :, np.newaxis].astype(np.float32), affine)
+    b0_nii.header.set_xyzt_units("mm")
+    nib.save(b0_nii, os.path.join(out_dir, "B0_map.nii.gz"))
+    print(f"[b0_corr] Saved B0_map.npy / B0_map.nii.gz  "
           f"range=[{np.nanmin(B0_final):.2f}, {np.nanmax(B0_final):.2f}] Hz")
 
     if args.save_plots:
         fig, ax = plt.subplots(figsize=(6, 5))
-        im = ax.imshow(B0_final, origin="lower")
+        im = ax.imshow(B0_final, origin="lower", cmap="gray")
         plt.colorbar(im, ax=ax, label="B0 offset (Hz)")
         ax.set_title("B0 map — final")
         plt.tight_layout()

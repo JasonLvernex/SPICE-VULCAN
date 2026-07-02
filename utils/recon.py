@@ -610,6 +610,7 @@ def phase_corr(
     ref_img=None,
     out_fname: str = "phase_corr_tmp",
     method: str = 'phasta',
+    affine=None,
 ) -> np.ndarray:
     """
     Apply FSL-MRS 0th-order phase correction to MRSI FID data.
@@ -656,16 +657,16 @@ def phase_corr(
 
     Ny, Nx = img_shape[0], img_shape[1]
 
-    brain_mask_img = Image((mag_map_2d * brain_mask).transpose(1, 0))
+    brain_mask_img = Image(np.ascontiguousarray((mag_map_2d * brain_mask).T[::-1, :]))
 
     mrsi_f = mrsi_fid.reshape(Ny, Nx, -1)
-    mrsi_f_4 = mrsi_f.transpose(1, 0, 2)[:, :, np.newaxis, :]
+    mrsi_f_4 = np.ascontiguousarray(mrsi_f.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
 
-    if ref_img is None:
+    _affine = ref_img.voxToWorldMat if ref_img is not None else affine
+    if _affine is None:
         nifti_in = gen_nifti_mrs(mrsi_f_4, dwelltime=TS, spec_freq=297.219)
     else:
-        nifti_in = gen_nifti_mrs(mrsi_f_4, dwelltime=TS, spec_freq=297.219,
-                                  affine=ref_img.voxToWorldMat)
+        nifti_in = gen_nifti_mrs(mrsi_f_4, dwelltime=TS, spec_freq=297.219, affine=_affine)
 
     out_path = os.path.join(out_dir, out_fname + ".nii.gz")
     kwargs = dict(mask=brain_mask_img, ppmlim=list(ppmlim), method=method)
@@ -675,7 +676,7 @@ def phase_corr(
     phcorr_nifti.save(out_path)
 
     phcorr_img = Image(out_path)
-    mrsi_phcorr_f = np.array(np.transpose(np.array(phcorr_img[:, :, 0, :]), (1, 0, 2)))
+    mrsi_phcorr_f = np.ascontiguousarray(np.transpose(np.array(phcorr_img[:, :, 0, :]), (1, 0, 2)))[:, ::-1, :]
 
     return mrsi_phcorr_f.conj()
 
