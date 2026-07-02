@@ -48,7 +48,7 @@ from fsl.data.image import Image
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
-from utils.pipeline_utils import try_symlink_shared_output, make_brain_mask
+from utils.pipeline_utils import try_symlink_shared_output, make_brain_mask, patch_spicefit_tree
 
 
 def parse_args():
@@ -373,6 +373,13 @@ def main():
     np.save(os.path.join(out_dir, "wref_resampled.npy"), image_blurry_numpy)
     print(f"[b0_corr] Saved wref_resampled.npy  shape={image_blurry_numpy.shape}")
 
+    patch_spicefit_tree(args.out_dir, [
+        ("wref_adj_nufft.nii.gz", os.path.join(out_dir, "wref_adj_nufft.nii.gz"), "wref"),
+    ], subdir="fit")
+    patch_spicefit_tree(args.out_dir, [
+        ("b0_map.nii.gz",      os.path.join(out_dir, "B0_map.nii.gz"),            "b0-map"),
+        ("wref_phcorr.nii.gz", os.path.join(out_dir, "wref_phcorr_nifti.nii.gz"), "wref-phcorr"),
+    ])
     print("[b0_corr] Done.")
 
 

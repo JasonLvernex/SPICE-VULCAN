@@ -7,7 +7,7 @@ This script uses the same linearised covariance propagation as
 covariance and correlation maps, e.g. Cr-PCr and NAA-NAAG.
 
 Reads  : <out_dir>/spice_<run_tag>/V_subspace.npy         (tag e.g. w5000_l0.0001)
-         <out_dir>/fitting_<run_tag>/spice_fit[/fit]/spice_aligned.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit/fit/spice_aligned.nii.gz  (symlink → SPICE_phcorr.nii.gz)
          <out_dir>/fitting_<run_tag>/spice_fit/concs/raw/*.nii.gz
          <out_dir>/fitting_<run_tag>/spice_fit/nuisance/*.nii.gz
          <data_dir>/wref_o.npy
@@ -202,20 +202,18 @@ def main():
     fit_dir = args.fit_dir or first_existing(
         [
             os.path.join(args.out_dir, _tg("fitting"), "spice_fit"),
-            os.path.join(args.out_dir, _tg("fitting"), "spice_fit.nii.gz"),
+            os.path.join(args.out_dir, _tg("fitting"), "spice_fit"),
         ],
         "fsl_mrsi fit directory",
     )
+    spice_dir = os.path.join(args.out_dir, _tg("spice"))
     aligned_nii_path = first_existing(
         [
             os.path.join(fit_dir, "fit", "spice_aligned.nii.gz"),
-            os.path.join(fit_dir, "spice_aligned.nii.gz"),
-            os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz"),
+            os.path.join(spice_dir, "SPICE_phcorr.nii.gz"),
         ],
         "aligned SPICE NIfTI-MRS",
     )
-
-    spice_dir = os.path.join(args.out_dir, _tg("spice"))
     out_dir = os.path.join(args.out_dir, "pair_conc_correlation")
     os.makedirs(out_dir, exist_ok=True)
 

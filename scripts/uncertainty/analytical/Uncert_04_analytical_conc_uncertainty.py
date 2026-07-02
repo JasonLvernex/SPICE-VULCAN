@@ -18,8 +18,8 @@ Method (Taylor / linearised error propagation):
         Cov(c) = Sigma_theta[:K, :K]
 
 Reads  : <out_dir>/spice_<run_tag>/V_subspace.npy        (tag e.g. w5000_l0.0001)
-         <out_dir>/fitting_<run_tag>/spice_aligned.nii.gz
-         <out_dir>/fitting_<run_tag>/spice_fit.nii.gz/
+         <out_dir>/spice_<run_tag>/SPICE_phcorr.nii.gz
+         <out_dir>/fitting_<run_tag>/spice_fit/
          <data_dir>/wref_o.npy
          <data_dir>/sigma_noise.npy
          <out_dir>/hessian_<run_tag>/mHm_*.npy
@@ -39,6 +39,7 @@ Usage:
         --run-tag   w5000_l0.0001 \
         --rank 20 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
+        --brain-threshold 0.16 --brain-erosion 1 \
         --plot-metabs NAA Cr Ins Glu PCh \
         [--vmax 4e-5]
 """
@@ -137,14 +138,16 @@ def internal_conc_uncertainty(cov_c, c_raw, ref_idxs):
 
 def _plot_std_map(name, std_2d, wref_norm, brain_mask_inner, out_path,
                   vmax=None, title_prefix="Analytical σ(c)", cbar_label="Std (arb. units)"):
-    masked = np.where(brain_mask_inner, std_2d, np.nan)
+    masked     = np.where(brain_mask_inner, std_2d, np.nan)
+    wref_masked = np.where(brain_mask_inner, wref_norm, np.nan)
+    import copy
+    _gray = copy.copy(plt.cm.get_cmap("gray"));  _gray.set_bad(color="black")
+    _reds = copy.copy(plt.cm.get_cmap("Reds"));  _reds.set_bad(color="black")
     fig, ax = plt.subplots(figsize=(6, 5), facecolor="black")
     ax.set_facecolor("black")
-    ax.imshow(wref_norm, origin="lower", cmap="gray", alpha=0.6, zorder=0)
+    ax.imshow(wref_masked, origin="lower", cmap=_gray, alpha=0.6, zorder=0)
     im = ax.imshow(masked, origin="lower", vmin=0, vmax=vmax,
-                   cmap="Reds", alpha=0.9, zorder=1)
-    ax.contour(brain_mask_inner, levels=[0.5], colors="white",
-               linewidths=0.7, zorder=2)
+                   cmap=_reds, alpha=0.9, zorder=1)
     ax.set_title(f"{title_prefix}: {name}", color="white")
     ax.tick_params(colors="white")
     for sp in ax.spines.values():
@@ -175,7 +178,7 @@ def parse_args():
     p.add_argument("--hess-dir",         default=None,
                    help="Dir with mHm_*.npy (default: <out-dir>/hessian)")
     p.add_argument("--fit-dir",          default=None,
-                   help="fsl_mrsi output dir (default: <out-dir>/fitting/spice_fit.nii.gz)")
+                   help="fsl_mrsi output dir (default: <out-dir>/fitting_<run-tag>/spice_fit)")
     # Acquisition (must match 04/05)
     p.add_argument("--dwelltime",        type=float, default=None)
     p.add_argument("--k-points",         type=int, default=None)
@@ -227,7 +230,7 @@ def main():
     _tg       = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
     spice_dir = os.path.join(args.out_dir, _tg("spice"))
     hess_dir  = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
-    fit_dir   = args.fit_dir  or os.path.join(args.out_dir, _tg("fitting"), "spice_fit.nii.gz")
+    fit_dir   = args.fit_dir  or os.path.join(args.out_dir, _tg("fitting"), "spice_fit")
     out_dir   = os.path.join(args.out_dir, _tg("conc_uncertainty_analytical"))
     os.makedirs(out_dir, exist_ok=True)
 
@@ -268,7 +271,7 @@ def main():
     print(f"[step12] Internal ref: {[metab_names[i] for i in ref_idxs]} (idxs {ref_idxs})")
 
     # Load aligned SPICE NIfTI to get dwelltime / cf for MRS object
-    aligned_nii_path = os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz")
+    aligned_nii_path = os.path.join(spice_dir, "SPICE_phcorr.nii.gz")
     nii_mrs  = NIFTI_MRS(aligned_nii_path)
     bw_data  = 1.0 / nii_mrs.dwelltime
     cf_data  = float(nii_mrs.spectrometer_frequency[0])
@@ -438,9 +441,10 @@ def main():
     print(f"[step12] Saved conc_std_analytical.npy          shape={conc_std.shape}")
     print(f"[step12] Saved conc_std_analytical_internal.npy shape={conc_std_internal.shape}")
 
-    # ── Save NIfTI + symlink into spice_fit/uncertainties/ for FSLeyes ───────
-    fit_uncert_dir = Path(fit_dir) / "uncertainties"
-    if fit_uncert_dir.exists():
+    # ── Save NIfTI + symlink into spice_fit/analytical/ for FSLeyes ─────────
+    fit_anal_dir = Path(fit_dir) / "analytical"
+    if Path(fit_dir).exists():
+        fit_anal_dir.mkdir(exist_ok=True)
         _ref_conc = Path(fit_dir) / "concs" / "raw" / f"{metab_names[0]}.nii.gz"
         _nii_aff  = nib.load(str(_ref_conc)).affine if _ref_conc.exists() else np.eye(4)
 
@@ -448,7 +452,7 @@ def main():
             nii_data = np.ascontiguousarray(arr_ny_nx.T[::-1, :]).astype(np.float32)
             nii_path = os.path.join(out_dir, f"anal_{name}_sd.nii.gz")
             nib.save(nib.Nifti1Image(nii_data[:, :, np.newaxis], _nii_aff), nii_path)
-            dst = fit_uncert_dir / f"anal_{name}_sd.nii.gz"
+            dst = fit_anal_dir / f"anal_{name}_sd.nii.gz"
             if dst.is_symlink() or dst.exists():
                 dst.unlink()
             dst.symlink_to(os.path.abspath(nii_path))
@@ -457,19 +461,16 @@ def main():
             _save_and_link(conc_std[:, :, k_idx], name)
         for name, arr in combined_stds.items():
             _save_and_link(arr, name)
-        print(f"[step12] Saved + symlinked anal_*_sd.nii.gz → {fit_uncert_dir}")
+        print(f"[step12] Saved + symlinked anal_*_sd.nii.gz → {fit_anal_dir}")
 
         tree_path = Path(fit_dir) / "mrsi.tree"
         if tree_path.exists():
             tree_txt = tree_path.read_text()
-            entry = "    anal_{metab}_sd.nii.gz                  (anal-sd)\n"
-            if "anal_{metab}_sd.nii.gz" not in tree_txt:
-                tree_txt = tree_txt.replace(
-                    "    {metab}_sd.nii.gz                       (sd)\n",
-                    "    {metab}_sd.nii.gz                       (sd)\n" + entry,
-                )
+            anal_section = "analytical\n    anal_{metab}_sd.nii.gz              (anal-sd)\n"
+            if "analytical" not in tree_txt:
+                tree_txt = tree_txt.replace("qc\n", anal_section + "qc\n")
                 tree_path.write_text(tree_txt)
-                print(f"[step12] Patched mrsi.tree with anal-sd entry")
+                print("[step12] Patched mrsi.tree with analytical section")
 
     # ── Plot ─────────────────────────────────────────────────────────────────
     for meta in args.plot_metabs:
@@ -480,10 +481,10 @@ def main():
             if args.vmax is not None:
                 vmax = args.vmax
             else:
-                valid = std_2d[brain_mask & np.isfinite(std_2d)]
+                valid = std_2d[brain_mask_inner & np.isfinite(std_2d)]
                 vmax  = float(np.percentile(valid, 90)) if len(valid) else None
             _plot_std_map(
-                meta, std_2d, wref_norm, brain_mask,
+                meta, std_2d, wref_norm, brain_mask_inner,
                 os.path.join(out_dir, f"fig_12_conc_std_{meta}.png"),
                 vmax=vmax,
             )
@@ -494,10 +495,10 @@ def main():
             if args.vmax is not None:
                 vmax_int = args.vmax
             else:
-                valid_int = std_2d_int[brain_mask & np.isfinite(std_2d_int)]
+                valid_int = std_2d_int[brain_mask_inner & np.isfinite(std_2d_int)]
                 vmax_int  = float(np.percentile(valid_int, 90)) if len(valid_int) else None
             _plot_std_map(
-                meta, std_2d_int, wref_norm, brain_mask,
+                meta, std_2d_int, wref_norm, brain_mask_inner,
                 os.path.join(out_dir, f"fig_12_internal_std_{meta}.png"),
                 vmax=vmax_int,
                 title_prefix="Internal σ(c/ref)",
@@ -511,11 +512,11 @@ def main():
                 if args.vmax is not None:
                     vmax = args.vmax
                 else:
-                    valid = arr[brain_mask & np.isfinite(arr)]
+                    valid = arr[brain_mask_inner & np.isfinite(arr)]
                     vmax  = float(np.percentile(valid, 90)) if len(valid) else None
                 safe  = name.replace("+", "_plus_")
                 _plot_std_map(
-                    name, arr, wref_norm, brain_mask,
+                    name, arr, wref_norm, brain_mask_inner,
                     os.path.join(out_dir, f"fig_12_conc_std_{safe}.png"),
                     vmax=vmax,
                 )
@@ -525,10 +526,10 @@ def main():
                 if args.vmax is not None:
                     vmax_int = args.vmax
                 else:
-                    valid_int = arr_int[brain_mask & np.isfinite(arr_int)]
+                    valid_int = arr_int[brain_mask_inner & np.isfinite(arr_int)]
                     vmax_int  = float(np.percentile(valid_int, 90)) if len(valid_int) else None
                 _plot_std_map(
-                    name, arr_int, wref_norm, brain_mask,
+                    name, arr_int, wref_norm, brain_mask_inner,
                     os.path.join(out_dir, f"fig_12_internal_std_{safe}.png"),
                     vmax=vmax_int,
                     title_prefix="Internal σ(c/ref)",

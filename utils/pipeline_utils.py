@@ -1,5 +1,6 @@
 """Shared pipeline utilities."""
 
+import glob
 import os
 import numpy as np
 from scipy.ndimage import binary_erosion
@@ -57,3 +58,63 @@ def try_symlink_shared_output(data_dir, subject_out_dir, subdir):
     print(f"[pipeline] wref files are symlinked from primary subject {primary_subj_id!r}.")
     print(f"[pipeline] Symlinked {subdir}/  →  {rel}  (skipping recompute).")
     return True
+
+
+def patch_spicefit_tree(out_dir: str, links: list, subdir: str = "data") -> None:
+    """Symlink NIfTI outputs into any existing spice_fit/<subdir>/ directories
+    and patch their mrsi.tree.  No-op when no fitting directory exists yet or
+    when a source file is missing.
+
+    out_dir : base scan output directory (e.g. output/invivo_260623_01/)
+    links   : [(dst_name, src_path, tree_label), ...]
+    subdir  : 'data' (default) or 'fit'
+    """
+    spice_fit_dirs = glob.glob(os.path.join(out_dir, "fitting_*/spice_fit"))
+    if not spice_fit_dirs:
+        return
+
+    for fsl_out in spice_fit_dirs:
+        link_dir = os.path.join(fsl_out, subdir)
+        os.makedirs(link_dir, exist_ok=True)
+
+        created = []
+        for dst_name, src, label in links:
+            if not os.path.exists(src):
+                continue
+            dst = os.path.join(link_dir, dst_name)
+            if os.path.islink(dst) or os.path.exists(dst):
+                os.unlink(dst)
+            os.symlink(os.path.abspath(src), dst)
+            created.append((dst_name, label))
+
+        if not created:
+            continue
+
+        tree_path = os.path.join(fsl_out, "mrsi.tree")
+        if not os.path.exists(tree_path):
+            print(f"[filetree] Symlinked {len(created)} file(s) → {fsl_out}/{subdir}/")
+            continue
+
+        with open(tree_path) as f:
+            tree_txt = f.read()
+
+        new_entries = "".join(
+            f"    {name:<38} ({label})\n"
+            for name, label in created
+            if name not in tree_txt
+        )
+
+        if new_entries:
+            if subdir == "fit":
+                anchor = "data\n" if "data\n" in tree_txt else "uncertainties\n"
+                tree_txt = tree_txt.replace(anchor, new_entries + anchor)
+            elif f"{subdir}\n" in tree_txt:
+                tree_txt = tree_txt.replace(f"{subdir}\n", f"{subdir}\n" + new_entries)
+            else:
+                tree_txt = tree_txt.replace("uncertainties\n",
+                                            f"{subdir}\n" + new_entries + "uncertainties\n")
+            with open(tree_path, "w") as f:
+                f.write(tree_txt)
+
+        print(f"[filetree] Symlinked {len(created)} file(s) → {fsl_out}/{subdir}/ "
+              f"({'patched mrsi.tree' if new_entries else 'tree already up to date'})")

@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from utils.scan_params import load_scan_params
 from utils.utils import phase_corr
 from utils.lipid import compute_lss, select_lipid_mask_gmm_simple
-from utils.pipeline_utils import make_brain_mask
+from utils.pipeline_utils import make_brain_mask, patch_spicefit_tree
 
 
 def parse_args():
@@ -387,6 +387,15 @@ def main():
     np.save(os.path.join(out_dir, "kt_mrsi_withlip_noring.npy"), kt_mrsi_withlip)
     print(f"[lipidrm] Saved kt_mrsi_withlip_noring.npy  shape={kt_mrsi_withlip.shape}")
 
+    patch_spicefit_tree(args.out_dir, [
+        ("my_mrsi_lprm_f.nii.gz", os.path.join(out_dir, "my_mrsi_lprm_f.nii.gz"), "lprm-mrsi"),
+    ], subdir="fit")
+    patch_spicefit_tree(args.out_dir, [
+        ("adj_bf_lprm.nii.gz",   os.path.join(out_dir, "adj_bf_lprm.nii.gz"),          "lprm-bf"),
+        ("adj_bf_crs.nii.gz",    os.path.join(out_dir, "adj_bf_spice_crs_cr.nii.gz"),  "lprm-crs"),
+        ("lipid_basis.nii.gz",   os.path.join(out_dir, "lipid_basis.nii.gz"),           "lipid-basis"),
+        ("mrsi_lprm_pre.nii.gz", os.path.join(out_dir, "mrsi_lprm_pre_phcorr.nii.gz"), "lprm-pre"),
+    ])
     print("[lipidrm] Done.")
 
 

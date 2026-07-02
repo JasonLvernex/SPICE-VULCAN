@@ -192,9 +192,7 @@ def plot_average_variation(spice_test, img_shape, voxel_x, voxel_y,
     nx, ny, nt = img_shape
     img = np.asarray(spice_test).reshape(nx, ny, nt)
     mag = np.mean(np.abs(img), axis=-1)
-    mag_masked = mag.copy()
-    if brain_mask is not None:
-        mag_masked[~brain_mask] = np.nan
+    mag_masked = np.where(brain_mask, mag, np.nan) if brain_mask is not None else mag
     spec = img[voxel_y, voxel_x, :].astype(np.complex128)
     x_ax = PPM_AXIS if PPM_AXIS is not None else np.arange(nt)
 
@@ -209,7 +207,7 @@ def plot_average_variation(spice_test, img_shape, voxel_x, voxel_y,
             ax.yaxis.label.set_color("white")
             for sp in ax.spines.values(): sp.set_color("white")
 
-    im0 = axs[0].imshow(np.abs(mag), cmap="viridis", origin="lower")
+    im0 = axs[0].imshow(mag_masked, cmap="viridis", origin="lower")
     axs[0].set_title("Avg magnitude")
     plt.colorbar(im0, ax=axs[0], fraction=0.046)
     axs[0].add_patch(Rectangle((voxel_x-.5, voxel_y-.5), 1, 1,
@@ -390,7 +388,7 @@ def main():
         img_shape   = im_size,
         voxel_x     = args.voxel_x,
         voxel_y     = args.voxel_y,
-        brain_mask  = brain_mask,
+        brain_mask  = brain_mask_inner,
         PPM_AXIS    = PPM_AXIS,
         threshold   = args.threshold,
         dark_mode   = args.dark_mode,

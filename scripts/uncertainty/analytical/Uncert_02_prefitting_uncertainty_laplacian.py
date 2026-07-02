@@ -34,14 +34,14 @@ Usage:
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
-        --rank 20 --n-samples 100 --brain-threshold 0.16 [--threshold 2.5e-6]
+        --rank 20 --n-samples 100 --brain-threshold 0.16 --brain-erosion 1 [--threshold 2.5e-6]
 
     # lobpcg — requires step 10 LOBPCG outputs
     python scripts/uncertainty/analytical/Uncert_02_prefitting_uncertainty_laplacian.py \
         --mode lobpcg \
         --data-dir  data/processed/invivo_260623_01 \
         --run-tag   w5000_l0.0001 \
-        --rank 20 --n-samples 100 --brain-threshold 0.16 [--threshold 2.5e-6]
+        --rank 20 --n-samples 100 --brain-threshold 0.16 --brain-erosion 1 [--threshold 2.5e-6]
 """
 
 import argparse
@@ -53,6 +53,7 @@ filterwarnings("ignore")
 
 import matplotlib
 matplotlib.use("Agg")
+from nifti_mrs.create_nmrs import gen_nifti_mrs
 import matplotlib.pyplot as plt
 import matplotlib.ticker
 import matplotlib.ticker as mticker
@@ -70,6 +71,22 @@ D_TYPE = np.complex64
 
 def fid_to_spec(fid):
     return np.fft.fftshift(np.fft.fft(fid, axis=-1, norm="ortho"), axes=-1)
+
+
+def spec_to_fid(spec):
+    return np.fft.ifft(np.fft.ifftshift(spec, axes=-1), axis=-1, norm="ortho")
+
+
+def _save_niftimrs(std_img, mean_spec, out_dir, TS, affine):
+    """Save posterior mean and std as NIfTI-MRS. Input shape (Ny, Nx, N_SEQ) spectrum domain."""
+    def _to_nii(arr):
+        fid = spec_to_fid(np.asarray(arr, dtype=np.complex64))
+        return np.ascontiguousarray(fid.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
+    gen_nifti_mrs(_to_nii(mean_spec), dwelltime=TS, spec_freq=297.219, affine=affine).save(
+        os.path.join(out_dir, "posterior_mean.nii.gz"))
+    gen_nifti_mrs(_to_nii(std_img),   dwelltime=TS, spec_freq=297.219, affine=affine).save(
+        os.path.join(out_dir, "posterior_std.nii.gz"))
+    print("[uncert-post] Saved posterior_mean.nii.gz  posterior_std.nii.gz")
 
 
 def sample_complex_mvnormal(mean, cov, n_samples=100, rng=None):
@@ -193,15 +210,11 @@ def plot_average_variation(
             wref_cmap.set_bad(color=bg)
             ax.imshow(wref_brain, origin="lower", cmap=wref_cmap, alpha=0.5, zorder=0)
 
-    def _contour(ax):
-        ax.contour(mask_2d, levels=[0.5], colors=c, linewidths=0.7, zorder=2)
-
     # Panel 1 — mean spectral magnitude
     cmap_g = copy.copy(plt.cm.get_cmap("viridis"))
     cmap_g.set_bad(color=bg)
     _wref_overlay(axs[0])
     im0 = axs[0].imshow(mean_map, origin="lower", cmap=cmap_g, zorder=1)
-    _contour(axs[0])
     axs[0].set_title("Mean spectral magnitude")
     cbar0 = plt.colorbar(im0, ax=axs[0], fraction=0.046)
     cbar0.ax.yaxis.set_tick_params(color=c)
@@ -217,7 +230,6 @@ def plot_average_variation(
     _wref_overlay(axs[1])
     im1 = axs[1].imshow(std_map, origin="lower", vmin=0, vmax=vmax,
                           cmap=cmap_r, alpha=0.9, zorder=1)
-    _contour(axs[1])
     axs[1].set_title("Posterior std (mean over spectrum)")
     cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046)
     cbar1.ax.yaxis.set_tick_params(color=c)
@@ -341,14 +353,16 @@ def main():
 
     # ── Common loads ─────────────────────────────────────────────────────────
     print(f"[uncert-post] mode={args.mode}  Loading data …")
+    _affine_path = data_dir + "affine.npy"
+    affine   = np.load(_affine_path) if os.path.exists(_affine_path) else np.eye(4)
     wref_img = np.load(data_dir + "wref_o.npy", mmap_mode="r")
     V_full   = np.load(os.path.join(spice_dir, "V_subspace.npy"))
     V        = V_full[:, :args.rank].astype(D_TYPE)   # (N_seq, rank)
 
     wref_2d   = np.abs(wref_img.squeeze(-1))
     wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
-    brain_mask = wref_norm > args.brain_threshold
-    binary_erosion(brain_mask, iterations=args.brain_erosion)  # inner mask unused here
+    brain_mask       = wref_norm > args.brain_threshold
+    brain_mask_inner = binary_erosion(brain_mask, iterations=args.brain_erosion)
 
     # ── Mode: voxelwise ───────────────────────────────────────────────────────
     if args.mode == "voxelwise":
@@ -379,7 +393,8 @@ def main():
 
         np.save(os.path.join(out_dir, "posterior_std.npy"), std_img)
         print(f"[uncert-post] Saved posterior_std.npy  shape={std_img.shape}")
-        _save_plots(std_img, mean_spec, im_size, brain_mask, wref_norm, PPM_AXIS, args, out_dir, "voxelwise")
+        _save_niftimrs(std_img, mean_spec, out_dir, TS, affine)
+        _save_plots(std_img, mean_spec, im_size, brain_mask_inner, wref_norm, PPM_AXIS, args, out_dir, "voxelwise")
 
     # ── Mode: lobpcg ─────────────────────────────────────────────────────────
     else:
@@ -407,7 +422,8 @@ def main():
 
         np.save(os.path.join(out_dir, "posterior_std.npy"), std_img)
         print(f"[uncert-post] Saved posterior_std.npy  shape={std_img.shape}")
-        _save_plots(std_img, mean_spec, im_size, brain_mask, wref_norm, PPM_AXIS, args, out_dir, "lobpcg")
+        _save_niftimrs(std_img, mean_spec, out_dir, TS, affine)
+        _save_plots(std_img, mean_spec, im_size, brain_mask_inner, wref_norm, PPM_AXIS, args, out_dir, "lobpcg")
 
     print("[uncert-post] Done.")
 

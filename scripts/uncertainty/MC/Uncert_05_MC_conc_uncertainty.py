@@ -429,11 +429,11 @@ def main():
     # xcorr-aligned perturbed FID.  We correct each MC sample so its c_raw is in
     # the same units as the original fit's c_raw (i.e. c_fit / s_j).
     if args.rescale:
-        _orig_nii      = NIFTI_MRS(os.path.join(args.out_dir, _tg("fitting"), "spice_aligned.nii.gz"))
+        _orig_nii      = NIFTI_MRS(os.path.join(spice_dir, "SPICE_phcorr.nii.gz"))
         _orig_fid_data = np.array(_orig_nii.image[:, :, 0, :])      # (Nx, Ny, N_seq)
         orig_scale_map = np.max(np.abs(_orig_fid_data), axis=-1)    # (Nx, Ny)
         orig_scale_map = np.where(orig_scale_map > 0, orig_scale_map, 1.0)
-        print(f"[mc-fit] Loaded orig_scale from spice_aligned.nii.gz, "
+        print(f"[mc-fit] Loaded orig_scale from SPICE_phcorr.nii.gz, "
               f"mean={orig_scale_map.mean():.3e}  max={orig_scale_map.max():.3e}")
 
     combine_groups = args.combine if args.combine else [["NAA", "NAAG"]]

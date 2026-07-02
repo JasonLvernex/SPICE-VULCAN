@@ -17,7 +17,8 @@ Usage:
         --basis-dir     ./basis/ \
         --run-tag       w5000_l0.0001 \
         --dim 64 64 \
-        --combine NAA NAAG --combine PCh GPC --combine Cr PCr --rescale \
+        --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
+        --rescale --brain-erosion 2 --brain-threshold 0.16 \
         [--plot-metabs NAA Cr Ins Glu PCh]
         [--ppmlim 0.0 7.5]
 """
@@ -84,14 +85,23 @@ def plot_metab_map(name, conc_maps, out_path, brain_mask=None,
         print(f"[warn] '{name}' not in conc_maps, skipping.")
         return
 
-    arr = conc_maps[name]
+    raw = conc_maps[name]
+    arr = np.where(brain_mask, raw, np.nan) if brain_mask is not None else raw
+
+    import copy
+    _cmap = copy.copy(plt.cm.get_cmap(cmap))
+    _cmap.set_bad(color="black")
+
     fig, ax = plt.subplots(figsize=(6, 5), facecolor="black")
     ax.set_facecolor("black")
 
     if wref_img_2d is not None:
-        ax.imshow(wref_img_2d, origin="lower", cmap="gray", alpha=0.6, zorder=0)
+        _gray = copy.copy(plt.cm.get_cmap("gray"))
+        _gray.set_bad(color="black")
+        wref_masked = np.where(brain_mask, wref_img_2d, np.nan) if brain_mask is not None else wref_img_2d
+        ax.imshow(wref_masked, origin="lower", cmap=_gray, alpha=0.6, zorder=0)
 
-    im = ax.imshow(arr, origin="lower", vmin=vmin, vmax=vmax, cmap=cmap,
+    im = ax.imshow(arr, origin="lower", vmin=vmin, vmax=vmax, cmap=_cmap,
                    alpha=0.9 if wref_img_2d is not None else 1.0, zorder=1)
 
     ax.set_title(f"Concentration: {name}", color="white")
@@ -106,9 +116,6 @@ def plot_metab_map(name, conc_maps, out_path, brain_mask=None,
         mticker.FuncFormatter(lambda x, _: f"{x:.2e}")
     )
     plt.setp(cbar.ax.get_yticklabels(), color="white")
-
-    if brain_mask is not None:
-        ax.contour(brain_mask, levels=[0.5], colors="white", linewidths=0.7, zorder=2)
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=150, facecolor="black")
@@ -288,35 +295,71 @@ def main():
     b0map_dir      = os.path.join(args.out_dir, "b0map")
     lprm_dir_link  = os.path.join(args.out_dir, "lipid_removal")
     adj_dir        = os.path.join(args.out_dir, "adjoint_test")
+    coilmap_dir    = os.path.join(args.out_dir, "coilmap")
 
+    # Files that go into spice_fit/fit/ (standard 4D NIfTI-MRS only)
     fit_symlinks = [
-        # (dst_name, src_path, tree_type_label)
-        ("spice_aligned.nii.gz",  aligned_nii,                                        "fit-aligned"),
-        ("U_subspace.nii.gz",     os.path.join(spice_dir, "U_subspace.nii.gz"),       "fit-U"),
-        ("V_subspace.nii.gz",     os.path.join(spice_dir, "V_subspace.nii.gz"),       "fit-V"),
-        ("SPICE_result.nii.gz",   os.path.join(spice_dir, "SPICE_result.nii.gz"),     "spice-result"),
-        ("adj_recon.nii.gz",      os.path.join(adj_dir,   "adj_recon.nii.gz"),        "adj-recon"),
-        ("wref_adj_nufft.nii.gz", os.path.join(b0map_dir, "wref_adj_nufft.nii.gz"),  "wref"),
-        ("my_mrsi_lprm_f.nii.gz", os.path.join(lprm_dir_link, "my_mrsi_lprm_f.nii.gz"), "lprm-mrsi"),
+        # (dst_name, src_path, tree_type_label)  — missing src → silently skipped
+        ("spice_aligned.nii.gz",      aligned_nii,                                                "fit-aligned"),
+        ("SPICE_result.nii.gz",       os.path.join(spice_dir, "SPICE_result.nii.gz"),             "spice-result"),
+        ("adj_recon.nii.gz",          os.path.join(adj_dir,   "adj_recon.nii.gz"),                "adj-recon"),
+        ("wref_adj_nufft.nii.gz",     os.path.join(b0map_dir, "wref_adj_nufft.nii.gz"),          "wref"),
+        ("my_mrsi_lprm_f.nii.gz",     os.path.join(lprm_dir_link, "my_mrsi_lprm_f.nii.gz"),     "lprm-mrsi"),
     ]
 
-    created = [(n, t) for n, s, t in fit_symlinks if _symlink(s, n, fit_subdir)]
+    # Files that go into spice_fit/data/ (non-standard dims or pipeline data)
+    data_symlinks = [
+        ("U_subspace.nii.gz",         os.path.join(spice_dir, "U_subspace.nii.gz"),               "subspace-U"),
+        ("V_subspace.nii.gz",         os.path.join(spice_dir, "V_subspace.nii.gz"),               "subspace-V"),
+        ("wref_masked.nii.gz",        os.path.join(spice_dir, "wref_masked.nii.gz"),              "wref-masked"),
+        ("adj_recon_aligned.nii.gz",  os.path.join(adj_dir,   "adj_recon_aligned.nii.gz"),        "adj-aligned"),
+        ("wref_phcorr.nii.gz",        os.path.join(b0map_dir, "wref_phcorr_nifti.nii.gz"),       "wref-phcorr"),
+        ("b0_map.nii.gz",             os.path.join(b0map_dir, "B0_map.nii.gz"),                  "b0-map"),
+        ("coilmap.nii.gz",            os.path.join(coilmap_dir, "ecalib_pp.nii.gz"),             "coilmap"),
+        ("adj_bf_lprm.nii.gz",        os.path.join(lprm_dir_link, "adj_bf_lprm.nii.gz"),         "lprm-bf"),
+        ("adj_bf_crs.nii.gz",         os.path.join(lprm_dir_link, "adj_bf_spice_crs_cr.nii.gz"), "lprm-crs"),
+        ("lipid_basis.nii.gz",        os.path.join(lprm_dir_link, "lipid_basis.nii.gz"),          "lipid-basis"),
+        ("mrsi_lprm_pre.nii.gz",      os.path.join(lprm_dir_link, "mrsi_lprm_pre_phcorr.nii.gz"), "lprm-pre"),
+        ("brain_mask.nii.gz",         os.path.join(fit_dir, "brain_mask.nii.gz"),                "brain-mask"),
+    ]
 
-    # ── Patch mrsi.tree with symlinked entries ────────────────────────────────
+    data_subdir = os.path.join(fsl_out, "data")
+    os.makedirs(data_subdir, exist_ok=True)
+
+    fit_created  = [(n, t) for n, s, t in fit_symlinks  if _symlink(s, n, fit_subdir)]
+    data_created = [(n, t) for n, s, t in data_symlinks if _symlink(s, n, data_subdir)]
+
+    # ── Patch mrsi.tree ───────────────────────────────────────────────────────
     tree_path = os.path.join(fsl_out, "mrsi.tree")
-    if os.path.exists(tree_path) and created:
+    if os.path.exists(tree_path):
         with open(tree_path) as f:
             tree_txt = f.read()
-        new_entries = "".join(
+
+        # fit/ entries: append into fit section (before data or uncertainties)
+        new_fit = "".join(
             f"    {name:<38} ({label})\n"
-            for name, label in created
+            for name, label in fit_created
             if name not in tree_txt
         )
-        if new_entries:
-            tree_txt = tree_txt.replace("uncertainties\n", new_entries + "uncertainties\n")
-            with open(tree_path, "w") as f:
-                f.write(tree_txt)
-            print(f"[fitting] Patched mrsi.tree with {len(created)} fit entries")
+        if new_fit:
+            anchor = "data\n" if "data\n" in tree_txt else "uncertainties\n"
+            tree_txt = tree_txt.replace(anchor, new_fit + anchor)
+
+        # data/ entries: append into data section (create section if missing)
+        new_data = "".join(
+            f"    {name:<38} ({label})\n"
+            for name, label in data_created
+            if name not in tree_txt
+        )
+        if new_data:
+            if "data\n" in tree_txt:
+                tree_txt = tree_txt.replace("data\n", "data\n" + new_data)
+            else:
+                tree_txt = tree_txt.replace("uncertainties\n", "data\n" + new_data + "uncertainties\n")
+
+        with open(tree_path, "w") as f:
+            f.write(tree_txt)
+        print(f"[fitting] Patched mrsi.tree (+{len(fit_created)} fit, +{len(data_created)} data entries)")
 
     # ── Load & plot concentration maps ────────────────────────────────────────
     try:

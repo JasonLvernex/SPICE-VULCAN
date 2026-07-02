@@ -45,6 +45,7 @@ _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 sys.path.insert(0, _root)
 from utils.scan_params import load_scan_params
 from utils.xcorr import my_mrsi_freq_align
+from utils.pipeline_utils import patch_spicefit_tree
 from utils.utils import NUFFTOp, plot_voxel_spectrum_and_maps, read_training_data_from_csv, phase_corr, Calc_B0_matrix
 
 
@@ -345,6 +346,12 @@ def main():
     else:
         print(f"[adj-test] {csv_path} not found — skipping SVD projection")
 
+    patch_spicefit_tree(args.out_dir, [
+        ("adj_recon.nii.gz", os.path.join(out_dir, "adj_recon.nii.gz"), "adj-recon"),
+    ], subdir="fit")
+    patch_spicefit_tree(args.out_dir, [
+        ("adj_recon_aligned.nii.gz", os.path.join(out_dir, "adj_recon_aligned.nii.gz"), "adj-aligned"),
+    ])
     print("[adj-test] Done.")
 
 

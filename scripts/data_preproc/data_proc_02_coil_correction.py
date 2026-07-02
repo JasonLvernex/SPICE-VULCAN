@@ -52,7 +52,7 @@ filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.scan_params import load_scan_params
 from utils.coil_sens import morse_pi
-from utils.pipeline_utils import try_symlink_shared_output
+from utils.pipeline_utils import try_symlink_shared_output, patch_spicefit_tree
 
 
 # ── RNI: phase-pole correction for ESPIRiT maps ───────────────────────────────
@@ -344,6 +344,9 @@ def main():
         os.path.join(out_dir, "ecalib_pp.nii.gz"),
     )
     print(f"[step-01] Saved ecalib_pp.nii.gz  shape={_smap_nii.shape}")
+    patch_spicefit_tree(args.out_dir, [
+        ("coilmap.nii.gz", os.path.join(out_dir, "ecalib_pp.nii.gz"), "coilmap"),
+    ])
     print("[step-01] Done.")
 
 
