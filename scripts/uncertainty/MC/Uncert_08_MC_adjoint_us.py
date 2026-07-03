@@ -262,17 +262,19 @@ def main():
     spec_std  = FIDToSpec(fid_std.reshape(-1, N_SEQ),  axis=-1).reshape(Nx, Ny, N_SEQ)
     std_map   = np.mean(np.abs(spec_std), axis=-1).T   # (Ny, Nx) — transpose to match display
 
-    # Save as NIfTI-MRS (FID domain, (Nx, Ny, 1, N_seq))
-    def _to_nii4d(fid_3d):
-        return np.ascontiguousarray(fid_3d[:, :, np.newaxis, :])
+    # Mean: save as NIfTI-MRS (complex FID, (Nx, Ny, 1, N_seq))
+    gen_nifti_mrs(
+        np.ascontiguousarray(fid_mean[:, :, np.newaxis, :]),
+        dwelltime=TS, spec_freq=297.219, affine=affine,
+    ).save(str(out_dir / "prefitting_mean.nii.gz"))
+    print(f"[uncert-08] Saved prefitting_mean.nii.gz")
 
-    gen_nifti_mrs(_to_nii4d(fid_mean), dwelltime=TS, spec_freq=297.219,
-                  affine=affine).save(str(out_dir / "prefitting_mean.nii.gz"))
-    gen_nifti_mrs(_to_nii4d(fid_std),  dwelltime=TS, spec_freq=297.219,
-                  affine=affine).save(str(out_dir / "prefitting_std.nii.gz"))
+    # Std: real-valued → save 2D spatial map as regular float NIfTI
     np.save(str(out_dir / "prefitting_std_map.npy"), std_map)
-    print(f"[uncert-08] Saved prefitting_mean.nii.gz / prefitting_std.nii.gz")
-    print(f"[uncert-08] Saved prefitting_std_map.npy  shape={std_map.shape}")
+    std_nii_data = np.ascontiguousarray(std_map.T[::-1, :]).astype(np.float32)
+    nib.save(nib.Nifti1Image(std_nii_data[:, :, np.newaxis], affine),
+             str(out_dir / "prefitting_std_map.nii.gz"))
+    print(f"[uncert-08] Saved prefitting_std_map.npy / prefitting_std_map.nii.gz  shape={std_map.shape}")
 
     # ── Plot: spatial std map ─────────────────────────────────────────────────
     vmax_std = float(np.nanpercentile(std_map[brain_mask], 95))
