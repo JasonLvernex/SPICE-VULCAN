@@ -40,7 +40,7 @@ Usage:
     python scripts/uncertainty/MC/Uncert_08_MC_adjoint_us.py \
         --adj-us-dir    output/invivo_260623_01_us25/adjoint_recon_us \
         --data-dir      data/processed/invivo_260623_01_us25 \
-        --fit-basis-dir ./basis_fit/ \
+        --fit-basis-dir ./basis/ \
         --ppmlim 0.0 7.5 \
         --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
         --plot-metabs NAA Cr Ins Glu PCh
