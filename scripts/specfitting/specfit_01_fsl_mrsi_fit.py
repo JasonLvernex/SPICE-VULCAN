@@ -301,26 +301,26 @@ def main():
     fit_symlinks = [
         # (dst_name, src_path, tree_type_label)  — missing src → silently skipped
         ("spice_aligned.nii.gz",      aligned_nii,                                                "fit-aligned"),
-        ("SPICE_result.nii.gz",       os.path.join(spice_dir, "SPICE_result.nii.gz"),             "spice-result"),
-        ("adj_recon.nii.gz",          os.path.join(adj_dir,   "adj_recon.nii.gz"),                "adj-recon"),
-        ("wref_adj_nufft.nii.gz",     os.path.join(b0map_dir, "wref_adj_nufft.nii.gz"),          "wref"),
-        ("my_mrsi_lprm_f.nii.gz",     os.path.join(lprm_dir_link, "my_mrsi_lprm_f.nii.gz"),     "lprm-mrsi"),
     ]
 
     # Files that go into spice_fit/data/ (non-standard dims or pipeline data)
     data_symlinks = [
-        ("U_subspace.nii.gz",         os.path.join(spice_dir, "U_subspace.nii.gz"),               "subspace-U"),
-        ("V_subspace.nii.gz",         os.path.join(spice_dir, "V_subspace.nii.gz"),               "subspace-V"),
-        ("wref_masked.nii.gz",        os.path.join(spice_dir, "wref_masked.nii.gz"),              "wref-masked"),
-        ("adj_recon_aligned.nii.gz",  os.path.join(adj_dir,   "adj_recon_aligned.nii.gz"),        "adj-aligned"),
-        ("wref_phcorr.nii.gz",        os.path.join(b0map_dir, "wref_phcorr_nifti.nii.gz"),       "wref-phcorr"),
-        ("b0_map.nii.gz",             os.path.join(b0map_dir, "B0_map.nii.gz"),                  "b0-map"),
-        ("coilmap.nii.gz",            os.path.join(coilmap_dir, "ecalib_pp.nii.gz"),             "coilmap"),
-        ("adj_bf_lprm.nii.gz",        os.path.join(lprm_dir_link, "adj_bf_lprm.nii.gz"),         "lprm-bf"),
-        ("adj_bf_crs.nii.gz",         os.path.join(lprm_dir_link, "adj_bf_spice_crs_cr.nii.gz"), "lprm-crs"),
-        ("lipid_basis.nii.gz",        os.path.join(lprm_dir_link, "lipid_basis.nii.gz"),          "lipid-basis"),
-        ("mrsi_lprm_pre.nii.gz",      os.path.join(lprm_dir_link, "mrsi_lprm_pre_phcorr.nii.gz"), "lprm-pre"),
-        ("brain_mask.nii.gz",         os.path.join(fit_dir, "brain_mask.nii.gz"),                "brain-mask"),
+        ("SPICE_result.nii.gz",       os.path.join(spice_dir, "SPICE_result.nii.gz"),             "data-spice-result"),
+        ("adj_recon.nii.gz",          os.path.join(adj_dir,   "adj_recon.nii.gz"),                "data-adj-recon"),
+        ("wref_adj_nufft.nii.gz",     os.path.join(b0map_dir, "wref_adj_nufft.nii.gz"),          "data-wref"),
+        ("my_mrsi_lprm_f.nii.gz",     os.path.join(lprm_dir_link, "my_mrsi_lprm_f.nii.gz"),     "data-lprm-mrsi"),
+        ("U_subspace.nii.gz",         os.path.join(spice_dir, "U_subspace.nii.gz"),               "data-subspace-U"),
+        ("V_subspace.nii.gz",         os.path.join(spice_dir, "V_subspace.nii.gz"),               "data-subspace-V"),
+        ("wref_masked.nii.gz",        os.path.join(spice_dir, "wref_masked.nii.gz"),              "data-wref-masked"),
+        ("adj_recon_aligned.nii.gz",  os.path.join(adj_dir,   "adj_recon_aligned.nii.gz"),        "data-adj-aligned"),
+        ("wref_phcorr.nii.gz",        os.path.join(b0map_dir, "wref_phcorr_nifti.nii.gz"),       "data-wref-phcorr"),
+        ("b0_map.nii.gz",             os.path.join(b0map_dir, "B0_map.nii.gz"),                  "data-b0-map"),
+        ("coilmap.nii.gz",            os.path.join(coilmap_dir, "ecalib_pp.nii.gz"),             "data-coilmap"),
+        ("adj_bf_lprm.nii.gz",        os.path.join(lprm_dir_link, "adj_bf_lprm.nii.gz"),         "data-lprm-bf"),
+        ("adj_bf_crs.nii.gz",         os.path.join(lprm_dir_link, "adj_bf_spice_crs_cr.nii.gz"), "data-lprm-crs"),
+        ("lipid_basis.nii.gz",        os.path.join(lprm_dir_link, "lipid_basis.nii.gz"),          "data-lipid-basis"),
+        ("mrsi_lprm_pre.nii.gz",      os.path.join(lprm_dir_link, "mrsi_lprm_pre_phcorr.nii.gz"), "data-lprm-pre"),
+        ("brain_mask.nii.gz",         os.path.join(fit_dir, "brain_mask.nii.gz"),                "data-brain-mask"),
     ]
 
     data_subdir = os.path.join(fsl_out, "data")

@@ -345,7 +345,7 @@ def main():
     )
     print(f"[step-01] Saved ecalib_pp.nii.gz  shape={_smap_nii.shape}")
     patch_spicefit_tree(args.out_dir, [
-        ("coilmap.nii.gz", os.path.join(out_dir, "ecalib_pp.nii.gz"), "coilmap"),
+        ("coilmap.nii.gz", os.path.join(out_dir, "ecalib_pp.nii.gz"), "data-coilmap"),
     ])
     print("[step-01] Done.")
 

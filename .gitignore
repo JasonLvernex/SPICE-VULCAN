@@ -37,6 +37,7 @@ build/
 # One-off visualization scripts (not part of the pipeline)
 viz_basis.py
 viz_traj.py
+viz_coilmap.py
 basis_functions.pdf
 basis_functions.png
 traj_3d.pdf

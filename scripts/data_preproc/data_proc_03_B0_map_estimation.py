@@ -374,11 +374,9 @@ def main():
     print(f"[b0_corr] Saved wref_resampled.npy  shape={image_blurry_numpy.shape}")
 
     patch_spicefit_tree(args.out_dir, [
-        ("wref_adj_nufft.nii.gz", os.path.join(out_dir, "wref_adj_nufft.nii.gz"), "wref"),
-    ], subdir="fit")
-    patch_spicefit_tree(args.out_dir, [
-        ("b0_map.nii.gz",      os.path.join(out_dir, "B0_map.nii.gz"),            "b0-map"),
-        ("wref_phcorr.nii.gz", os.path.join(out_dir, "wref_phcorr_nifti.nii.gz"), "wref-phcorr"),
+        ("wref_adj_nufft.nii.gz", os.path.join(out_dir, "wref_adj_nufft.nii.gz"), "data-wref"),
+        ("b0_map.nii.gz",      os.path.join(out_dir, "B0_map.nii.gz"),            "data-b0-map"),
+        ("wref_phcorr.nii.gz", os.path.join(out_dir, "wref_phcorr_nifti.nii.gz"), "data-wref-phcorr"),
     ])
     print("[b0_corr] Done.")
 

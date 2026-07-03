@@ -347,10 +347,8 @@ def main():
         print(f"[adj-test] {csv_path} not found — skipping SVD projection")
 
     patch_spicefit_tree(args.out_dir, [
-        ("adj_recon.nii.gz", os.path.join(out_dir, "adj_recon.nii.gz"), "adj-recon"),
-    ], subdir="fit")
-    patch_spicefit_tree(args.out_dir, [
-        ("adj_recon_aligned.nii.gz", os.path.join(out_dir, "adj_recon_aligned.nii.gz"), "adj-aligned"),
+        ("adj_recon.nii.gz", os.path.join(out_dir, "adj_recon.nii.gz"), "data-adj-recon"),
+        ("adj_recon_aligned.nii.gz", os.path.join(out_dir, "adj_recon_aligned.nii.gz"), "data-adj-aligned"),
     ])
     print("[adj-test] Done.")
 

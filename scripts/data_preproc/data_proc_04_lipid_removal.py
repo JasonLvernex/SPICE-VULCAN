@@ -388,13 +388,11 @@ def main():
     print(f"[lipidrm] Saved kt_mrsi_withlip_noring.npy  shape={kt_mrsi_withlip.shape}")
 
     patch_spicefit_tree(args.out_dir, [
-        ("my_mrsi_lprm_f.nii.gz", os.path.join(out_dir, "my_mrsi_lprm_f.nii.gz"), "lprm-mrsi"),
-    ], subdir="fit")
-    patch_spicefit_tree(args.out_dir, [
-        ("adj_bf_lprm.nii.gz",   os.path.join(out_dir, "adj_bf_lprm.nii.gz"),          "lprm-bf"),
-        ("adj_bf_crs.nii.gz",    os.path.join(out_dir, "adj_bf_spice_crs_cr.nii.gz"),  "lprm-crs"),
-        ("lipid_basis.nii.gz",   os.path.join(out_dir, "lipid_basis.nii.gz"),           "lipid-basis"),
-        ("mrsi_lprm_pre.nii.gz", os.path.join(out_dir, "mrsi_lprm_pre_phcorr.nii.gz"), "lprm-pre"),
+        ("my_mrsi_lprm_f.nii.gz", os.path.join(out_dir, "my_mrsi_lprm_f.nii.gz"), "data-lprm-mrsi"),
+        ("adj_bf_lprm.nii.gz",   os.path.join(out_dir, "adj_bf_lprm.nii.gz"),          "data-lprm-bf"),
+        ("adj_bf_crs.nii.gz",    os.path.join(out_dir, "adj_bf_spice_crs_cr.nii.gz"),  "data-lprm-crs"),
+        ("lipid_basis.nii.gz",   os.path.join(out_dir, "lipid_basis.nii.gz"),           "data-lipid-basis"),
+        ("mrsi_lprm_pre.nii.gz", os.path.join(out_dir, "mrsi_lprm_pre_phcorr.nii.gz"), "data-lprm-pre"),
     ])
     print("[lipidrm] Done.")
 
