@@ -166,10 +166,12 @@ def main():
     print(f"\n[undersample] Before → mrsi_data: {mrsi_data.shape}  mrsi_ksp: {mrsi_ksp.shape}")
     print(f"[undersample] After  → mrsi_data: {us_data.shape}   mrsi_ksp: {us_ksp.shape}")
 
-    np.save(str(out_dir / "mrsi_data.npy"), us_data)
-    np.save(str(out_dir / "mrsi_ksp.npy"),  us_ksp)
+    np.save(str(out_dir / "mrsi_data.npy"),  us_data)
+    np.save(str(out_dir / "mrsi_ksp.npy"),   us_ksp)
+    np.save(str(out_dir / "ring_mask.npy"),  keep_arr)
     print(f"[undersample] Saved mrsi_data.npy  dtype={us_data.dtype}")
     print(f"[undersample] Saved mrsi_ksp.npy   dtype={us_ksp.dtype}")
+    print(f"[undersample] Saved ring_mask.npy  kept indices: {keep_arr[:5]} … (n={len(keep_arr)})")
 
     # ── Symlink shared files ──────────────────────────────────────────────────
     print(f"\n[undersample] Symlinking shared files from {src_dir.name} …")
