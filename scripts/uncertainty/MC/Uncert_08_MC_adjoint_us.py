@@ -97,8 +97,12 @@ def _run_fsl_mrsi(data_file, basis_path, mask_file, ppmlim, out_file,
         cmd.append("--no_conj_fid")
     for group in combine_groups:
         cmd += ["--combine"] + list(group)
-    subprocess.run(cmd, env=os.environ.copy(), check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    result = subprocess.run(cmd, env=os.environ.copy(),
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        err = subprocess.CalledProcessError(result.returncode, cmd)
+        err.stderr = result.stderr
+        raise err
 
 
 def _load_conc_maps(fit_dir, metab_names_ref=None):
@@ -356,6 +360,11 @@ def main():
             )   # (Ny, Nx, n_metab)
             output_concs.append(one_iter)
 
+        except subprocess.CalledProcessError as e:
+            tqdm.write(f"[MC {mc.name}] fsl_mrsi failed (exit {e.returncode})")
+            if getattr(e, "stderr", None):
+                tqdm.write(e.stderr[-3000:])
+            failed.append(mc.name)
         except Exception as e:
             tqdm.write(f"[MC {mc.name}] failed: {repr(e)}")
             failed.append(mc.name)
