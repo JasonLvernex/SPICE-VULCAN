@@ -341,7 +341,9 @@ def main():
             ref_img_obj = None
             affine      = np.eye(4)
 
-    wref_nii = nib.Nifti1Image(wref_masked[:, :, np.newaxis].astype(np.float32), affine)
+    wref_nii = nib.Nifti1Image(
+        np.ascontiguousarray(wref_masked.T[::-1, :])[:, :, np.newaxis].astype(np.float32),
+        affine)
     wref_nii.header.set_xyzt_units("mm")
     nib.save(wref_nii, os.path.join(out_dir, "wref_masked.nii.gz"))
     print("[spice] Saved wref_masked.nii.gz")

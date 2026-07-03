@@ -336,9 +336,10 @@ def main():
 
     _affine_path = data_dir + "affine.npy"
     _nii_affine  = np.load(_affine_path) if os.path.exists(_affine_path) else np.eye(4)
-    # coil_smap: (N_coils, Ny, Nx) → (Ny, Nx, N_coils) → orientation fix → (Nx_flip, Ny, N_coils)
-    _smap_nyx = coil_smap.transpose(1, 2, 0)
-    _smap_nii = np.ascontiguousarray(_smap_nyx.transpose(1, 0, 2)[::-1, :, :]).astype(np.complex64)
+    # coil_smap: (N_coils, Ny, Nx) → (Nx_flip, Ny, 1, N_coils) for correct FSLeyes display
+    _smap_nii = np.ascontiguousarray(
+        coil_smap.transpose(2, 1, 0)[::-1, :, np.newaxis, :]
+    ).astype(np.complex64)
     nib.save(
         nib.Nifti1Image(_smap_nii, _nii_affine),
         os.path.join(out_dir, "ecalib_pp.nii.gz"),

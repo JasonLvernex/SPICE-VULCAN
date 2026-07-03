@@ -517,13 +517,14 @@ def main():
         if first_subj_dir is None:
             # first subject: save wref files directly
             first_subj_dir = out_dir
-            np.save(os.path.join(out_dir, "wref_data.npy"),  wref_data_npy)
-            np.save(os.path.join(out_dir, "wref_ksp.npy"),   wref_ksp_npy)
-            np.save(os.path.join(out_dir, "wref_o.npy"),     wref_o)
-            np.save(os.path.join(out_dir, "sigma_noise.npy"), np.float32(sigma_noise))
-            np.save(os.path.join(out_dir, "affine.npy"),      mrsi_affine.astype(np.float64))
+            np.save(os.path.join(out_dir, "wref_data.npy"),   wref_data_npy)
+            np.save(os.path.join(out_dir, "wref_ksp.npy"),    wref_ksp_npy)
+            np.save(os.path.join(out_dir, "wref_o.npy"),      wref_o)
+            np.save(os.path.join(out_dir, "sigma_noise.npy"),  np.float32(sigma_noise))
+            np.save(os.path.join(out_dir, "affine.npy"),       mrsi_affine.astype(np.float64))
+            np.save(os.path.join(out_dir, "wref_affine.npy"),  pos_info['affine'].astype(np.float64))
             _save_wref_o_png(wref_o, out_dir)
-            print(f"  saved wref files + affine.npy")
+            print(f"  saved wref files + affine.npy + wref_affine.npy")
         else:
             # subsequent subjects: symlink to first subject's wref files
             _symlink_wref(first_subj_dir, out_dir, WREF_FILES)

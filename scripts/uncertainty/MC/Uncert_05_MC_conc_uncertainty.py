@@ -31,22 +31,21 @@ Writes : <out_dir>/conc_uncertainty_<run_tag>/
              fig_11_conc_std_<metab>.png
 
 Usage:
-    # lobpcg mode (default — faster)
-    python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
-        --data-dir      data/processed/invivo_250305_01 \
-        --basis-dir     ./basis/ \
-        --fit-basis-dir ./basis_fit/ \
-        --run-tag       w5000_l0.0001 \
-        --mode lobpcg --rank 20 --n-samples 20 \
-        --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
-        --plot-metabs NAA Cr Ins Glu PCh
-
-    # voxelwise mode
+    # voxelwise mode (default)
     python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
         --data-dir  data/processed/invivo_250305_01 \
         --basis-dir ./basis/ \
         --run-tag   w5000_l0.0001 \
-        --mode voxelwise --rank 20 --n-samples 20
+        --rank 20 --n-samples 20 \
+        --combine NAA NAAG --combine PCh GPC --combine Cr PCr \
+        --plot-metabs NAA Cr Ins Glu PCh
+
+    # lobpcg mode (faster)
+    python scripts/uncertainty/MC/Uncert_05_MC_conc_uncertainty.py \
+        --data-dir  data/processed/invivo_250305_01 \
+        --basis-dir ./basis/ \
+        --run-tag   w5000_l0.0001 \
+        --mode lobpcg --rank 20 --n-samples 20
 """
 
 import argparse
@@ -280,7 +279,7 @@ def _plot_mean_map(name, conc_mean, metab_names, wref_norm, brain_mask, out_path
 
 def parse_args():
     p = argparse.ArgumentParser(description="Laplacian MC concentration uncertainty — step 11")
-    p.add_argument("--mode",            choices=["voxelwise", "lobpcg"], default="lobpcg",
+    p.add_argument("--mode",            choices=["voxelwise", "lobpcg"], default="voxelwise",
                    help="Source of posterior samples (matches step 09 --mode)")
     p.add_argument("--data-dir",        required=True)
     p.add_argument("--basis-dir",       required=True,

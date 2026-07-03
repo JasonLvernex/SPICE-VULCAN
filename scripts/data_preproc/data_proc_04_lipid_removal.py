@@ -194,13 +194,23 @@ def main():
     mag_map_2d   = np.mean(np.abs(image_blurry), axis=-1)
 
     # ── ref image / affine ───────────────────────────────────────────────────────
-    ref_img_path = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
-    try:
-        ref_img_obj = Image(ref_img_path)
+    _affine_npy = data_dir + "affine.npy"
+    if args.ref_nii:
+        ref_img_obj = Image(args.ref_nii)
         affine      = ref_img_obj.voxToWorldMat
-    except Exception:
+    elif os.path.exists(_affine_npy):
+        affine      = np.load(_affine_npy)
         ref_img_obj = None
-        affine      = np.eye(4)
+        print(f"[lipidrm] Loaded affine from {_affine_npy}")
+    else:
+        ref_img_path = data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz"
+        try:
+            ref_img_obj = Image(ref_img_path)
+            affine      = ref_img_obj.voxToWorldMat
+        except Exception:
+            ref_img_obj = None
+            affine      = np.eye(4)
+            print("[lipidrm] WARNING: affine.npy not found; using identity")
 
     # ── Brain mask (single, normalised wref_o) ───────────────────────────────────
     wref_norm, brain_nolip_mask, _ = make_brain_mask(

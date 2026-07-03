@@ -42,6 +42,8 @@ basis_functions.pdf
 basis_functions.png
 traj_3d.pdf
 traj_3d.png
+coilmap_c*_fig.pdf
+coilmap_c*_fig.png
 
 # Experimental / work-in-progress scripts (kept local only)
 scripts/recon_method/04b_SPICE_refit.py

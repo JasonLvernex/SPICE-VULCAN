@@ -47,6 +47,7 @@ Usage:
 """
 
 import argparse
+import copy
 import os
 import shutil
 import subprocess
@@ -150,6 +151,76 @@ def _overlay_map(data_2d, wref_norm, brain_mask, title, cmap, label, out_path, v
     plt.close(fig)
 
 
+def _plot_prefitting(mean_map, std_map, spec_mean_vox, spec_std_vox,
+                     wref_norm, brain_mask, PPM_AXIS, vx, vy, N_mc,
+                     out_path, vmax_std=None):
+    """3-panel dark-mode figure: mean map | std map | voxel spectrum ± std."""
+    c, bg = "white", "black"
+    fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+    fig.patch.set_facecolor(bg)
+    for ax in axs:
+        ax.set_facecolor(bg)
+        ax.title.set_color(c)
+        ax.xaxis.label.set_color(c)
+        ax.yaxis.label.set_color(c)
+        ax.tick_params(colors=c)
+        for sp in ax.spines.values():
+            sp.set_color(c)
+
+    def _wref_bg(ax):
+        wm   = np.where(brain_mask, wref_norm, np.nan)
+        cm_g = copy.copy(plt.cm.get_cmap("gray"))
+        cm_g.set_bad(color=bg)
+        ax.imshow(wm, origin="lower", cmap=cm_g, alpha=0.5, zorder=0)
+
+    # Panel 1 — mean |spectrum| map
+    cm_v = copy.copy(plt.cm.get_cmap("viridis"))
+    cm_v.set_bad(color=bg)
+    _wref_bg(axs[0])
+    im0 = axs[0].imshow(np.where(brain_mask, mean_map, np.nan),
+                         origin="lower", cmap=cm_v, zorder=1)
+    axs[0].set_title("Mean |spectrum|")
+    cbar0 = plt.colorbar(im0, ax=axs[0], fraction=0.046)
+    cbar0.ax.yaxis.set_tick_params(color=c)
+    plt.setp(cbar0.ax.get_yticklabels(), color=c)
+    axs[0].plot(vy, vx, "g+", markersize=10, markeredgewidth=2, zorder=3)
+
+    # Panel 2 — prefitting std map
+    if vmax_std is None:
+        vmax_std = float(np.nanpercentile(std_map[brain_mask], 95))
+    cm_r = copy.copy(plt.cm.get_cmap("Reds"))
+    cm_r.set_bad(color=bg)
+    _wref_bg(axs[1])
+    im1 = axs[1].imshow(np.where(brain_mask, std_map, np.nan),
+                         origin="lower", vmin=0, vmax=vmax_std,
+                         cmap=cm_r, alpha=0.9, zorder=1)
+    axs[1].set_title(f"Prefitting std  (N_mc={N_mc})")
+    cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046)
+    cbar1.ax.yaxis.set_tick_params(color=c)
+    cbar1.ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.2e}"))
+    plt.setp(cbar1.ax.get_yticklabels(), color=c)
+    axs[1].plot(vy, vx, "g+", markersize=10, markeredgewidth=2, zorder=3)
+
+    # Panel 3 — mean ± std spectrum at selected voxel
+    mu  = np.abs(spec_mean_vox)
+    sig = np.abs(spec_std_vox)
+    axs[2].plot(PPM_AXIS, mu, color=c, label="Mean")
+    axs[2].fill_between(PPM_AXIS, mu - sig, mu + sig,
+                         alpha=0.35, color="tomato", label="±1σ")
+    axs[2].set_title(f"Uncertainty  voxel ({vx},{vy})")
+    axs[2].set_xlabel("ppm")
+    axs[2].set_ylabel("|Spectrum|")
+    axs[2].invert_xaxis()
+    axs[2].grid(True, alpha=0.3, color="gray")
+    axs[2].legend(labelcolor=c, facecolor=bg)
+    for sp in axs[2].spines.values():
+        sp.set_color(c)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args():
@@ -245,7 +316,7 @@ def main():
             print(f"  [skip] {mc.name}: adj_recon_aligned.nii.gz not found")
             continue
         nii      = NIFTI_MRS(str(nii_path))
-        fid_data = np.array(nii.image[:, :, 0, :]).astype(D_TYPE)  # (Nx, Ny, N_seq)
+        fid_data = np.array(nii[:, :, 0, :]).astype(D_TYPE)  # (Nx, Ny, N_seq); __getitem__ applies .conj()
         mc_fids.append(fid_data)
         mc_names.append(mc.name)
         print(f"  loaded {mc.name}  shape={fid_data.shape}")
@@ -258,13 +329,13 @@ def main():
 
     # ── 1. Prefitting uncertainty ─────────────────────────────────────────────
     print(f"\n[uncert-08] Computing prefitting uncertainty  (N_mc={N_mc}) …")
-    fid_mean = mc_stack.mean(axis=0)                              # (Nx, Ny, N_seq)
-    fid_std  = mc_stack.std(axis=0)                               # (Nx, Ny, N_seq)
+    fid_mean   = mc_stack.mean(axis=0)                              # (Nx, Ny, N_seq)
+    spec_stack = FIDToSpec(mc_stack.reshape(N_mc, -1, N_SEQ), axis=-1).reshape(N_mc, Nx, Ny, N_SEQ)
+    spec_mean  = spec_stack.mean(axis=0)                            # (Nx, Ny, N_SEQ) complex
+    spec_std   = spec_stack.std(axis=0)                             # (Nx, Ny, N_SEQ) real
 
-    # Spatial maps: mean |spectrum| magnitude
-    spec_mean = FIDToSpec(fid_mean.reshape(-1, N_SEQ), axis=-1).reshape(Nx, Ny, N_SEQ)
-    spec_std  = FIDToSpec(fid_std.reshape(-1, N_SEQ),  axis=-1).reshape(Nx, Ny, N_SEQ)
-    std_map   = np.mean(np.abs(spec_std), axis=-1).T   # (Ny, Nx) — transpose to match display
+    mean_map   = np.mean(np.abs(spec_mean), axis=-1)                # (Nx, Ny)
+    std_map    = np.mean(np.abs(spec_std),  axis=-1)                # (Nx, Ny)
 
     # Mean: save as NIfTI-MRS (complex FID, (Nx, Ny, 1, N_seq))
     gen_nifti_mrs(
@@ -273,44 +344,29 @@ def main():
     ).save(str(out_dir / "prefitting_mean.nii.gz"))
     print(f"[uncert-08] Saved prefitting_mean.nii.gz")
 
-    # Std: real-valued → save 2D spatial map as regular float NIfTI
+    # Std: save 2D spatial map as regular float NIfTI
     np.save(str(out_dir / "prefitting_std_map.npy"), std_map)
-    std_nii_data = np.ascontiguousarray(std_map.T[::-1, :]).astype(np.float32)
+    std_nii_data = np.ascontiguousarray(std_map[::-1, :]).astype(np.float32)
     nib.save(nib.Nifti1Image(std_nii_data[:, :, np.newaxis], affine),
              str(out_dir / "prefitting_std_map.nii.gz"))
     print(f"[uncert-08] Saved prefitting_std_map.npy / prefitting_std_map.nii.gz  shape={std_map.shape}")
 
-    # ── Plot: spatial std map ─────────────────────────────────────────────────
+    # ── Plot: 3-panel dark-mode figure ───────────────────────────────────────
+    vy, vx   = args.plot_voxel
     vmax_std = float(np.nanpercentile(std_map[brain_mask], 95))
-    _overlay_map(
-        std_map, wref_norm, brain_mask,
-        title=f"Prefitting std (N_mc={N_mc})",
-        cmap="Reds", label="Std |spectrum| (arb.)",
-        out_path=str(out_dir / "fig_prefitting_std.png"),
-        vmax=vmax_std,
+    _plot_prefitting(
+        mean_map      = mean_map,
+        std_map       = std_map,
+        spec_mean_vox = spec_mean[vx, vy, :],
+        spec_std_vox  = spec_std[vx, vy, :],
+        wref_norm     = wref_norm,
+        brain_mask    = brain_mask,
+        PPM_AXIS      = PPM_AXIS,
+        vx=vx, vy=vy, N_mc=N_mc,
+        out_path      = str(out_dir / "fig_prefitting.png"),
+        vmax_std      = vmax_std,
     )
-    print(f"[uncert-08] Saved fig_prefitting_std.png")
-
-    # ── Plot: mean spectrum ± std at a brain voxel ────────────────────────────
-    vy, vx = args.plot_voxel
-    spec_mean_yx = FIDToSpec(fid_mean[vx, vy], axis=-1)  # note: fid stored as (Nx,Ny,T)
-    spec_std_yx  = FIDToSpec(fid_std[vx, vy],  axis=-1)
-
-    fig, ax = plt.subplots(figsize=(9, 4))
-    ax.plot(PPM_AXIS, np.real(spec_mean_yx), color="steelblue", label="Mean")
-    ax.fill_between(PPM_AXIS,
-                    np.real(spec_mean_yx) - np.real(spec_std_yx),
-                    np.real(spec_mean_yx) + np.real(spec_std_yx),
-                    alpha=0.3, color="steelblue", label="±1σ")
-    ax.set_xlabel("ppm")
-    ax.set_ylabel("Re(spectrum)")
-    ax.set_title(f"Prefitting uncertainty — voxel [{vy},{vx}]  (N_mc={N_mc})")
-    ax.invert_xaxis()
-    ax.legend()
-    plt.tight_layout()
-    fig.savefig(str(out_dir / "fig_prefitting_spectrum.png"), dpi=150)
-    plt.close(fig)
-    print(f"[uncert-08] Saved fig_prefitting_spectrum.png")
+    print(f"[uncert-08] Saved fig_prefitting.png")
 
     # ── 2. Concentration uncertainty (optional) ───────────────────────────────
     if not args.fit_basis_dir:

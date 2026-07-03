@@ -211,13 +211,23 @@ def main():
     mag_map_2d = np.mean(np.abs(image_blurry_numpy), axis=-1)
 
     # ── Cell 7: save wref NIfTI ───────────────────────────────────────────────────
-    ref_img_path = args.ref_nii or (data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz")
-    try:
-        ref_img_obj = Image(ref_img_path)
+    _wref_affine_npy = data_dir + "wref_affine.npy"
+    if args.ref_nii:
+        ref_img_obj = Image(args.ref_nii)
         affine      = ref_img_obj.voxToWorldMat
-    except Exception:
+    elif os.path.exists(_wref_affine_npy):
+        affine      = np.load(_wref_affine_npy)
         ref_img_obj = None
-        affine      = np.eye(4)
+        print(f"[b0_corr] Loaded wref affine from {_wref_affine_npy}")
+    else:
+        ref_img_path = data_dir + "meas_MID00125_FID81014_mrsi_64_cr_adj300.nii.gz"
+        try:
+            ref_img_obj = Image(ref_img_path)
+            affine      = ref_img_obj.voxToWorldMat
+        except Exception:
+            ref_img_obj = None
+            affine      = np.eye(4)
+            print("[b0_corr] WARNING: wref_affine.npy not found; using identity")
 
     fid_save = np.ascontiguousarray(SpecToFID(image_blurry_numpy.reshape(Ny, Nx, -1), axis=-1).transpose(1, 0, 2)[::-1, :, :])
     gen_nifti_mrs(fid_save[:, :, np.newaxis, :], dwelltime=TS, spec_freq=297.219,
@@ -353,7 +363,9 @@ def main():
     B0_final = B0_fill_smoothed
     np.save(os.path.join(out_dir, "B0_map_pk.npy"), B0_final)
     np.save(os.path.join(out_dir, "B0_map.npy"),    B0_final)
-    b0_nii = nib.Nifti1Image(B0_final[:, :, np.newaxis].astype(np.float32), affine)
+    b0_nii = nib.Nifti1Image(
+        np.ascontiguousarray(B0_final.T[::-1, :])[:, :, np.newaxis].astype(np.float32),
+        affine)
     b0_nii.header.set_xyzt_units("mm")
     nib.save(b0_nii, os.path.join(out_dir, "B0_map.nii.gz"))
     print(f"[b0_corr] Saved B0_map.npy / B0_map.nii.gz  "
