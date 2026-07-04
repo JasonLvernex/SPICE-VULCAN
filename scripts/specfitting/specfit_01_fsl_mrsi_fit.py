@@ -235,7 +235,10 @@ def main():
 
     # save magnitude-weighted mask for fsl_mrsi
     mask_nii = os.path.join(fit_dir, "brain_mask.nii.gz")
-    Image(np.ascontiguousarray((wref_2d * brain_mask).astype(np.float32).T[::-1, :])).save(mask_nii)
+    mask_data = np.ascontiguousarray((wref_2d * brain_mask).astype(np.float32).T[::-1, :])
+    mask_nii_obj = nib.Nifti1Image(mask_data[:, :, np.newaxis], affine)
+    mask_nii_obj.header.set_xyzt_units("mm")
+    nib.save(mask_nii_obj, mask_nii)
     print(f"[fitting] Brain mask saved → {mask_nii}")
 
     # ── Visualise phcorr spectrum ─────────────────────────────────────────────

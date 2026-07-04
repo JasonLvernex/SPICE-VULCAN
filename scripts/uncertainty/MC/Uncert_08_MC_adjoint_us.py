@@ -121,7 +121,7 @@ def _load_conc_maps(fit_dir, metab_names_ref=None):
         data = np.squeeze(nib.load(str(f)).get_fdata())
         if data.ndim == 3 and data.shape[-1] == 1:
             data = data[:, :, 0]
-        conc_maps[name] = data.T   # (Nx, Ny) → (Ny, Nx)
+        conc_maps[name] = data.T[:, ::-1]   # (Nx_flipped, Ny) → (Ny, Nx)
         names.append(name)
     if metab_names_ref is not None:
         names = metab_names_ref
@@ -316,7 +316,7 @@ def main():
             print(f"  [skip] {mc.name}: adj_recon_aligned.nii.gz not found")
             continue
         nii      = NIFTI_MRS(str(nii_path))
-        fid_data = np.array(nii[:, :, 0, :]).astype(D_TYPE)  # (Nx, Ny, N_seq); __getitem__ applies .conj()
+        fid_data = np.array(nii[:, :, 0, :]).transpose(1, 0, 2)[:, ::-1, :].astype(D_TYPE)  # (Ny, Nx, N_seq)
         mc_fids.append(fid_data)
         mc_names.append(mc.name)
         print(f"  loaded {mc.name}  shape={fid_data.shape}")
@@ -337,16 +337,16 @@ def main():
     mean_map   = np.mean(np.abs(spec_mean), axis=-1)                # (Nx, Ny)
     std_map    = np.mean(np.abs(spec_std),  axis=-1)                # (Nx, Ny)
 
-    # Mean: save as NIfTI-MRS (complex FID, (Nx, Ny, 1, N_seq))
+    # Mean: save as NIfTI-MRS — fid_mean is (Ny, Nx, N_seq) internal → NIfTI convention
     gen_nifti_mrs(
-        np.ascontiguousarray(fid_mean[:, :, np.newaxis, :]),
+        np.ascontiguousarray(fid_mean.transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :],
         dwelltime=TS, spec_freq=297.219, affine=affine,
     ).save(str(out_dir / "prefitting_mean.nii.gz"))
     print(f"[uncert-08] Saved prefitting_mean.nii.gz")
 
     # Std: save 2D spatial map as regular float NIfTI
     np.save(str(out_dir / "prefitting_std_map.npy"), std_map)
-    std_nii_data = np.ascontiguousarray(std_map[::-1, :]).astype(np.float32)
+    std_nii_data = np.ascontiguousarray(std_map.T[::-1, :]).astype(np.float32)
     nib.save(nib.Nifti1Image(std_nii_data[:, :, np.newaxis], affine),
              str(out_dir / "prefitting_std_map.nii.gz"))
     print(f"[uncert-08] Saved prefitting_std_map.npy / prefitting_std_map.nii.gz  shape={std_map.shape}")
@@ -380,8 +380,19 @@ def main():
 
     # Brain mask NIfTI for fsl_mrsi
     mask_nii = str(out_dir / "brain_mask.nii.gz")
-    from fsl.data.image import Image
-    Image((wref_2d * brain_mask).astype(np.float32).T).save(mask_nii)
+    mask_data = np.ascontiguousarray((wref_2d * brain_mask).astype(np.float32).T[::-1, :])
+    mask_nii_obj = nib.Nifti1Image(mask_data[:, :, np.newaxis], affine)
+    mask_nii_obj.header.set_xyzt_units("mm")
+    nib.save(mask_nii_obj, mask_nii)
+
+    # Debug: visualise mask before fitting
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    axs[0].imshow(wref_2d,    origin="lower", cmap="gray");  axs[0].set_title("wref_2d (raw)")
+    axs[1].imshow(brain_mask, origin="lower", cmap="gray");  axs[1].set_title("brain_mask")
+    plt.tight_layout()
+    fig.savefig(str(out_dir / "debug_brain_mask.png"), dpi=150)
+    plt.close(fig)
+    print(f"[uncert-08] Saved debug_brain_mask.png  wref_2d shape={wref_2d.shape}  mask_data shape={mask_data.shape}")
 
     output_concs    = []
     metab_names_ref = None
