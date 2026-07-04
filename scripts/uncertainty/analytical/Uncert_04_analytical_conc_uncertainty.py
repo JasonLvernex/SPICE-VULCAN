@@ -310,20 +310,23 @@ def main():
     voigt_jac = fsl_models.getModelJac("voigt")
 
     # ── Load fitted parameters from fsl_mrsi output ───────────────────────────
-    # NIfTI layout from fsl_mrsi: (Nx, Ny) — need [ix, iy] to access voxel (iy, ix)
+    # fsl_mrsi outputs (Nx_flipped, Ny); apply [::-1,:] on load → (Nx, Ny), access as [ix, iy]
     print("[step12] Loading fitted parameters …")
     fit_path = Path(fit_dir)
 
     conc_raw = np.zeros((Nx, Ny, K), dtype=np.float64)
     for k_idx, name in enumerate(metab_names):
         f = fit_path / "concs" / "raw" / f"{name}.nii.gz"
-        conc_raw[:, :, k_idx] = np.squeeze(nib.load(str(f)).get_fdata())
+        conc_raw[:, :, k_idx] = np.squeeze(nib.load(str(f)).get_fdata())[::-1, :]  # (Nx_flipped,Ny)→(Nx,Ny)
 
-    gamma_map = np.squeeze(nib.load(str(fit_path / "nuisance" / "gamma_group0.nii.gz")).get_fdata())
-    sigma_map = np.squeeze(nib.load(str(fit_path / "nuisance" / "sigma_group0.nii.gz")).get_fdata())
-    eps_map   = np.squeeze(nib.load(str(fit_path / "nuisance" / "shift_group0.nii.gz")).get_fdata())
-    phi0_map  = np.squeeze(nib.load(str(fit_path / "nuisance" / "p0.nii.gz")).get_fdata())
-    phi1_map  = np.squeeze(nib.load(str(fit_path / "nuisance" / "p1.nii.gz")).get_fdata())
+    def _load_nii_map(path):
+        return np.squeeze(nib.load(str(path)).get_fdata())[::-1, :]  # (Nx_flipped,Ny)→(Nx,Ny)
+
+    gamma_map = _load_nii_map(fit_path / "nuisance" / "gamma_group0.nii.gz")
+    sigma_map = _load_nii_map(fit_path / "nuisance" / "sigma_group0.nii.gz")
+    eps_map   = _load_nii_map(fit_path / "nuisance" / "shift_group0.nii.gz")
+    phi0_map  = _load_nii_map(fit_path / "nuisance" / "p0.nii.gz")
+    phi1_map  = _load_nii_map(fit_path / "nuisance" / "p1.nii.gz")
 
     # ── Per-voxel analytical uncertainty ─────────────────────────────────────
     # conc_std stored in (Ny, Nx, K) layout matching brain_mask
