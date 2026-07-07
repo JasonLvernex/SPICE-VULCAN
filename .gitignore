@@ -34,16 +34,8 @@ build/
 *.swo
 *~
 
-# One-off visualization scripts (not part of the pipeline)
-viz_basis.py
-viz_traj.py
-viz_coilmap.py
-basis_functions.pdf
-basis_functions.png
-traj_3d.pdf
-traj_3d.png
-coilmap_c*_fig.pdf
-coilmap_c*_fig.png
+# Visualization folder (scripts + outputs, kept local only)
+viz/
 
 # Experimental / work-in-progress scripts (kept local only)
 scripts/recon_method/04b_SPICE_refit.py
