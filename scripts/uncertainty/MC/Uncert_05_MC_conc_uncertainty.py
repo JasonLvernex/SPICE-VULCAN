@@ -406,7 +406,7 @@ def main():
     if args.mode == "voxelwise":
         hess_dir    = args.hess_dir or os.path.join(args.out_dir, _tg("hessian"))
         sigma_noise = float(np.load(data_dir + "sigma_noise.npy"))
-        cov_scale   = sigma_noise ** 2
+        cov_scale   = 2.0 * sigma_noise ** 2  # σ_complex² = 2σ_real²; sigma_noise stores σ_real
         mu_map      = (mean_U @ V.conj().T).astype(D_TYPE)      # (N_vox, N_seq)
         print(f"[mc-fit] voxelwise  sigma_noise={sigma_noise:.3e}  cov_scale={cov_scale:.3e}")
         all_samples = build_voxelwise_samples(

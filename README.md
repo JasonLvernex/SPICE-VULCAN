@@ -9,6 +9,8 @@ A pipeline for *in vivo* brain 2D-MRSI reconstruction, spectral fitting, and met
 
 This codebase implements a full processing pipeline from raw k-space MRSI data to quantified metabolite maps with analytical uncertainty estimates.
 
+![Pipeline overview](pipeline_overview.png)
+
 ### MRSI Reconstruction
 
 1. **SPICE** — spatially-regularized low-rank MRSI reconstruction (Toeplitz and finufft backends). Ref: [Liang 2020](https://pubmed.ncbi.nlm.nih.gov/31483526/)

@@ -252,7 +252,7 @@ def main():
 
     # Noise variance (sigma_noise^2 scaling for mHm posterior covariance)
     sigma_noise = float(np.load(data_dir + "sigma_noise.npy"))
-    sigma2      = sigma_noise ** 2
+    sigma2      = 2.0 * sigma_noise ** 2  # σ_complex² = 2σ_real²; sigma_noise stores σ_real
     print(f"[step12] sigma_noise={sigma_noise:.4e}")
 
     # ── Set up fsl_mrs voigt model ─────────────────────────────────────────────

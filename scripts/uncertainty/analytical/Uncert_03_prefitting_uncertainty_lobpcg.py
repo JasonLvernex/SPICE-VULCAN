@@ -319,7 +319,7 @@ def main():
     sigma_noise_path = data_dir + "sigma_noise.npy"
     if os.path.exists(sigma_noise_path):
         sigma_noise = float(np.load(sigma_noise_path))
-        sigma2 = sigma_noise ** 2
+        sigma2 = 2.0 * sigma_noise ** 2  # σ_complex² = 2σ_real²; sigma_noise stores σ_real
         print(f"[lobpcg] sigma_noise={sigma_noise:.4e}  sigma2={sigma2:.4e}")
     else:
         sigma2 = args.sigma2

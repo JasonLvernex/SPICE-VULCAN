@@ -371,7 +371,7 @@ def main():
         est_U       = np.load(os.path.join(spice_dir, "U_est.npy"))
         print(f"[uncert-post] V={V.shape}  U={est_U.shape}  sigma_noise={sigma_noise}")
 
-        cov_scale = float(sigma_noise) ** 2
+        cov_scale = 2.0 * float(sigma_noise) ** 2  # σ_complex² = 2σ_real²; sigma_noise stores σ_real
         mu_map    = (est_U[:N_VOXEL, :args.rank] @ V.conj().T).astype(D_TYPE)
 
         print(f"[uncert-post] Drawing {args.n_samples} posterior samples …")
