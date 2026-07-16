@@ -6,6 +6,9 @@ outputs/
 save_iter*/
 saved_iters*/
 
+# Review notebook data — too large for version control
+review_vulcan_mc_*/data/
+
 # Notebooks (keep locally, do not publish)
 notebooks/
 

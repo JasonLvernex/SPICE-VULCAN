@@ -4,17 +4,18 @@ Step 14 — Group uncertainty across 260623 series subjects.
 
 Pre-fitting uncertainty:
     Compute std of SPICE-reconstructed spectra across subjects, per voxel.
-    → output/group_260623/prefitting_std.npy   (Ny, Nx, N_seq)
+    → output/group_260623_w5000_l0.0001/prefitting_std.npy   (Ny, Nx, N_seq)
 
 Concentration uncertainty (both raw and internal):
     Compute std of fsl_mrsi concentration maps across subjects, per voxel.
-    → output/group_260623/conc_std_raw.npy      (Ny, Nx, n_metab)
-    → output/group_260623/conc_std_internal.npy (Ny, Nx, n_metab)
+    → output/group_260623_w5000_l0.0001/conc_std_raw.npy      (Ny, Nx, n_metab)
+    → output/group_260623_w5000_l0.0001/conc_std_internal.npy (Ny, Nx, n_metab)
+
+Output directory is auto-derived as <out-root>/group_<prefix>_<run-tag> when --out-dir is not given.
 
 Usage:
     python scripts/uncertainty/MC/Uncert_07_group_uncertainty.py \
         --subjects invivo_260623_01 invivo_260623_02 invivo_260623_03 invivo_260623_04 invivo_260623_05 \
-        --out-dir output/group_260623 \
         --run-tag  w5000_l0.0001 \
         --dim 64 64 \
         --plot-metabs NAA Cr Ins Glu PCh
@@ -223,10 +224,11 @@ def main():
         _fit_base = f"fitting_{args.run_tag}" if args.run_tag else "fitting"
         args.fit_subdir = f"{_fit_base}/spice_fit"
 
-    # Derive out-dir from subject list prefix if not given
+    # Derive out-dir from subject list prefix + run-tag if not given
     if args.out_dir is None:
         prefix = os.path.commonprefix(args.subjects).rstrip("_0")
-        args.out_dir = os.path.join(args.out_root, f"group_{prefix or 'group'}")
+        base   = f"group_{prefix or 'group'}"
+        args.out_dir = os.path.join(args.out_root, f"{base}_{args.run_tag}" if args.run_tag else base)
     os.makedirs(args.out_dir, exist_ok=True)
     print(f"[group-uncert] Subjects ({N_SUBJ}): {args.subjects}")
     print(f"[group-uncert] Output: {args.out_dir}")
@@ -263,7 +265,7 @@ def main():
         print("[warn] Need at least 2 subjects for pre-fitting std.")
     else:
         spice_stack = np.stack(spice_specs, axis=0)   # (N_subj, Ny, Nx, N_seq)
-        prefitting_std  = np.std(np.abs(spice_stack), axis=0)   # (Ny, Nx, N_seq)
+        prefitting_std  = np.std(spice_stack, axis=0)            # (Ny, Nx, N_seq) complex std, consistent with analytical posterior_std
         prefitting_mean = np.mean(np.abs(spice_stack), axis=0)
         # mask outside brain to NaN
         prefitting_std[~brain_mask, :]  = np.nan

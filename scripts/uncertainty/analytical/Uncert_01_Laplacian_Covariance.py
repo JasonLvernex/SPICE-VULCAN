@@ -134,24 +134,30 @@ def make_fft1d_op(shape, mode="fid2spec", dtype=D_TYPE):
 
 # ── Hessian operator ──────────────────────────────────────────────────────────
 
-def H_action(deltaU, V, B, FHF, WtW, lam):
+def H_action(deltaU, V, B, FHF, WtW, lam, F_loc=None):
     """
     H[deltaU]  where deltaU: (N_vox, rank)
     = B*.conj() * FHF * (B * (deltaU @ V.H)) @ V  +  lam * WtW @ deltaU
+
+    If F_loc is given (finufft backend), FHF is ignored and F_loc.matvec /
+    F_loc.rmatvec are called directly, avoiding the Gram wrapper.
     """
     deltaX = deltaU @ V.conj().T                   # (N_vox, N_seq)
     BX     = (B * deltaX).ravel()
-    z      = (FHF @ BX).reshape(B.shape)
+    if F_loc is not None:
+        z = F_loc.rmatvec(F_loc.matvec(BX.astype(D_TYPE))).reshape(B.shape)
+    else:
+        z = (FHF @ BX).reshape(B.shape)
     term   = (B.conj() * z) @ V                    # (N_vox, rank)
     reg    = lam * (WtW @ deltaU)
     return (term + reg).astype(D_TYPE)
 
 
-def make_H_linop(N_vox, rank, V, B, FHF, WtW, lam) -> LinearOperator:
+def make_H_linop(N_vox, rank, V, B, FHF, WtW, lam, F_loc=None) -> LinearOperator:
     d = N_vox * rank
     def mv(u_flat):
         dU = u_flat.reshape(N_vox, rank).astype(D_TYPE)
-        return H_action(dU, V, B, FHF, WtW, lam).ravel().astype(D_TYPE)
+        return H_action(dU, V, B, FHF, WtW, lam, F_loc=F_loc).ravel().astype(D_TYPE)
     return LinearOperator((d, d), matvec=mv, dtype=D_TYPE)
 
 
@@ -189,14 +195,17 @@ def init_worker(V_, B0_mat_, WW_, backend_,
     MITER          = MITER_
 
     im_size   = tuple(im_size_)
-    Gram_OP, F1D = build_gram_for_worker(
+    Gram_OP, F1D, F_loc = build_gram_for_worker(
         backend_, im_size, D_TYPE,
         ktraj_np=ktraj_np_, grid_size=tuple(grid_size_) if grid_size_ is not None else None,
         kernel_np=kernel_np_, device_str=device_str_,
         trej_np=trej_np_, coil_smap_raw_np=coil_smap_raw_np_, n_coils=n_coils_,
     )
-    fFHFf   = F1D.H @ Gram_OP @ F1D
-    Hess_op = make_H_linop(N_VOXEL, NUM_SPICE_RANK, V, B0_mat, fFHFf, WW, lam)
+    if F_loc is not None:   # finufft: call F.matvec / F.rmatvec directly
+        Hess_op = make_H_linop(N_VOXEL, NUM_SPICE_RANK, V, B0_mat, None, WW, lam, F_loc=F_loc)
+    else:                   # torchnufft: F1D.H @ Toeplitz_Gram @ F1D
+        fFHFf   = F1D.H @ Gram_OP @ F1D
+        Hess_op = make_H_linop(N_VOXEL, NUM_SPICE_RANK, V, B0_mat, fFHFf, WW, lam)
 
 
 def solve_one_voxel(vox_idx):
@@ -250,6 +259,8 @@ def parse_args():
     p.add_argument("--lambda-we-max", type=float, default=5000.0,
                    help="Max edge weight W_max for calc_Bmatrix")
     p.add_argument("--pool-size",     type=int,   default=1)
+    p.add_argument("--minpool",       action="store_true",
+                   help="Use directional min-pooling for edge weights; match recon_01 --minpool.")
     p.add_argument("--brain-threshold", type=float, default=0.08)
     p.add_argument("--brain-erosion",   type=int,   default=3)
     p.add_argument("--basis-dir",     default="./basis",
@@ -319,7 +330,7 @@ def main():
     print(f"[uncert] V shape={V.shape}")
 
     # ── B0 matrix ─────────────────────────────────────────────────────────────
-    B0_map_clean = np.nan_to_num(-B0_map, nan=0.0)
+    B0_map_clean = np.nan_to_num(B0_map, nan=0.0)
     B0_mat = Calc_B0_matrix_mx(B0_map_clean, TIME_AXIS)       # (N_vox, N_SEQ)
     print(f"[uncert] B0_mat shape={B0_mat.shape}")
 
@@ -333,7 +344,7 @@ def main():
     print("[uncert] Building edge-preserving W …")
     W_edge, _, _W, Nb = calc_Bmatrix(
         wref_norm, wmax=args.lambda_we_max, adj=8,
-        pool_size=args.pool_size, minpooling_Handler=True,
+        pool_size=args.pool_size, minpooling_Handler=args.minpool,
         brain_mask=brain_mask, mask_dilate_layers=3,
     )
     WW = (W_edge.conj().T @ W_edge).astype(D_TYPE)
@@ -364,15 +375,18 @@ def main():
         print("[uncert] Using finufft backend (no Toeplitz kernel needed).")
 
     # ── Quick in-process check: build once to verify shapes ───────────────────
-    _Gram, _F1D = build_gram_for_worker(
+    _Gram, _F1D, _F_loc = build_gram_for_worker(
         args.backend, im_size, D_TYPE,
         ktraj_np=ktraj_np, grid_size=grid_size, kernel_np=kernel_np, device_str=device_str,
         trej_np=trej_np, coil_smap_raw_np=coil_smap_np, n_coils=N_COILS,
     )
-    _fFHFf  = _F1D.H @ _Gram @ _F1D
-    _Hess   = make_H_linop(N_VOXEL, args.rank, V, B0_mat, _fFHFf, WW, args.lam)
+    if _F_loc is not None:
+        _Hess = make_H_linop(N_VOXEL, args.rank, V, B0_mat, None, WW, args.lam, F_loc=_F_loc)
+    else:
+        _fFHFf = _F1D.H @ _Gram @ _F1D
+        _Hess  = make_H_linop(N_VOXEL, args.rank, V, B0_mat, _fFHFf, WW, args.lam)
     print(f"[uncert] Hessian shape={_Hess.shape}  (N_vox*rank={N_VOXEL*args.rank})")
-    del _Gram, _F1D, _fFHFf, _Hess
+    del _Gram, _F1D, _F_loc, _Hess
 
     # ── Parallel voxel CG ─────────────────────────────────────────────────────
     vox_list = np.flatnonzero(brain_mask.ravel())[args.vox_start:args.vox_end]

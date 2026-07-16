@@ -12,10 +12,10 @@ Reads  : <data_dir>/wref_o.npy
          <out_dir>/lipid_removal/mrsi_ksp_scaled.npy
          <out_dir>/spice_<run_tag>/V_subspace.npy    (tag e.g. w5000_l0.0001)
          <out_dir>/spice_<run_tag>/U_est.npy
-Writes : <out_dir>/lobpcg_<run_tag>/lobpcg_Q.npy     (eigenvectors, shape d×k)
-         <out_dir>/lobpcg_<run_tag>/lobpcg_vals.npy   (eigenvalues, shape k)
-         <out_dir>/lobpcg_<run_tag>/posterior_std.npy (Ny, Nx, N_seq)
-         <out_dir>/lobpcg_<run_tag>/fig_10_uncert_map.png
+Writes : <out_dir>/lobpcg_<run_tag>_k<k_eig>/lobpcg_Q.npy     (eigenvectors, shape d×k)
+         <out_dir>/lobpcg_<run_tag>_k<k_eig>/lobpcg_vals.npy   (eigenvalues, shape k)
+         <out_dir>/lobpcg_<run_tag>_k<k_eig>/posterior_std.npy (Ny, Nx, N_seq)
+         <out_dir>/lobpcg_<run_tag>_k<k_eig>/fig_10_uncert_map.png
 
 Usage:
     python scripts/uncertainty/analytical/Uncert_03_prefitting_uncertainty_lobpcg.py \
@@ -288,7 +288,7 @@ def main():
     lprm_dir    = os.path.join(args.out_dir, "lipid_removal")
     _tg         = lambda b: f"{b}_{args.run_tag}" if args.run_tag else b
     spice_dir   = os.path.join(args.out_dir, _tg("spice"))
-    out_dir     = os.path.join(args.out_dir, _tg("lobpcg"))
+    out_dir     = os.path.join(args.out_dir, f"{_tg('lobpcg')}_k{args.k_eig}")
     os.makedirs(out_dir, exist_ok=True)
 
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -341,7 +341,7 @@ def main():
     )
     WW = (W_edge.conj().T @ W_edge).astype(D_TYPE)
 
-    B0_mat = Calc_B0_matrix_mx(np.nan_to_num(-B0_map, nan=0.0), TIME_AXIS)  # (N_vox, N_seq)
+    B0_mat = Calc_B0_matrix_mx(np.nan_to_num(B0_map, nan=0.0), TIME_AXIS)   # (N_vox, N_seq)
 
     # ── NUFFT operators ───────────────────────────────────────────────────────
     trej = mrsi_ksp_scaled.T.astype(np.float32)
@@ -382,6 +382,10 @@ def main():
     np.save(os.path.join(out_dir, "posterior_std.npy"), posterior_std)
     print(f"[lobpcg] Saved posterior_std.npy  shape={posterior_std.shape}")
 
+    mean_spec = np.mean(sim_spec, axis=0)              # (Ny, Nx, N_seq)
+    np.save(os.path.join(out_dir, "mean_spec.npy"), mean_spec)
+    print(f"[lobpcg] Saved mean_spec.npy  shape={mean_spec.shape}")
+
     # ── Plots ─────────────────────────────────────────────────────────────────
     fig = plot_average_variation(
         spice_test  = posterior_std,
@@ -400,7 +404,6 @@ def main():
     print(f"[lobpcg] Saved {path}")
 
     # mean spectrum plot
-    mean_spec = np.mean(sim_spec, axis=0)
     fig2 = plot_average_variation(
         spice_test = mean_spec,
         img_shape  = im_size,

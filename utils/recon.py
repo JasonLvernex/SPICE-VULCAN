@@ -318,10 +318,18 @@ def build_gram_for_worker(
 
         toep_ob  = tkbn.ToepNufft().to(device_str)
         kernel_t = torch.tensor(kernel_np).to(device_str)
+        smap_t = None
+        if coil_smap_raw_np is not None:
+            coil_smap = np.repeat(
+                coil_smap_raw_np[np.newaxis, :, :, :, np.newaxis],
+                N_SEQ,
+                axis=-1,
+            ).astype(D_TYPE)
+            smap_t = torch.from_numpy(coil_smap).to(device_str, dtype=T_D_TYPE)
 
         def _toep_mv(x_np):
             x_t = torch.from_numpy(x_np.astype(D_TYPE)).reshape(1, 1, *im_size).to(device_str)
-            return toep_ob(x_t, kernel_t, smaps=None, norm="ortho").squeeze().cpu().numpy().astype(D_TYPE).ravel()
+            return toep_ob(x_t, kernel_t, smaps=smap_t, norm="ortho").squeeze().cpu().numpy().astype(D_TYPE).ravel()
 
         def _fid2spec(x):
             xr = np.asarray(x).reshape(im_size)
@@ -333,7 +341,7 @@ def build_gram_for_worker(
         n = N_VOXEL * N_SEQ
         Gram_OP = _LO((n, n), matvec=_toep_mv, rmatvec=_toep_mv, dtype=D_TYPE)
         F1D     = _LO((n, n), matvec=_fid2spec, rmatvec=_spec2fid, dtype=D_TYPE)
-        return Gram_OP, F1D
+        return Gram_OP, F1D, None
 
     else:  # finufft
         import mrinufft
@@ -342,14 +350,10 @@ def build_gram_for_worker(
         NufftOpCls = mrinufft.get_operator("finufft")
         nufft_raw  = NufftOpCls(trej_np, shape=im_size, n_coils=n_coils, n_batchs=1,
                                  squeeze_dims=True, smaps=smap_time)
-        fop        = NUFFTLinearOperator(nufft_raw, img_shape=im_size,
-                                          n_samples=int(np.prod(trej_np.shape[:-1])), n_coils=n_coils, dtype=D_TYPE)
+        fop   = NUFFTLinearOperator(nufft_raw, img_shape=im_size,
+                                     n_samples=int(np.prod(trej_np.shape[:-1])), n_coils=n_coils, dtype=D_TYPE)
         F_loc = fop.to_scipy()
-        n     = N_VOXEL * N_SEQ
-        Gram_OP = _LO((n, n), matvec=lambda x: F_loc.rmatvec(F_loc.matvec(x.astype(D_TYPE))), dtype=D_TYPE)
-        _eye    = lambda x: np.asarray(x, dtype=D_TYPE)
-        F1D     = _LO((n, n), matvec=_eye, rmatvec=_eye, dtype=D_TYPE)
-        return Gram_OP, F1D
+        return None, None, F_loc  # caller uses F_loc.rmatvec/matvec directly; no Gram needed
 
 
 # ── B0 modulation matrices ────────────────────────────────────────────────────
