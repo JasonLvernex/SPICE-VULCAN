@@ -318,18 +318,10 @@ def build_gram_for_worker(
 
         toep_ob  = tkbn.ToepNufft().to(device_str)
         kernel_t = torch.tensor(kernel_np).to(device_str)
-        smap_t = None
-        if coil_smap_raw_np is not None:
-            coil_smap = np.repeat(
-                coil_smap_raw_np[np.newaxis, :, :, :, np.newaxis],
-                N_SEQ,
-                axis=-1,
-            ).astype(D_TYPE)
-            smap_t = torch.from_numpy(coil_smap).to(device_str, dtype=T_D_TYPE)
 
         def _toep_mv(x_np):
             x_t = torch.from_numpy(x_np.astype(D_TYPE)).reshape(1, 1, *im_size).to(device_str)
-            return toep_ob(x_t, kernel_t, smaps=smap_t, norm="ortho").squeeze().cpu().numpy().astype(D_TYPE).ravel()
+            return toep_ob(x_t, kernel_t, smaps=None, norm="ortho").squeeze().cpu().numpy().astype(D_TYPE).ravel()
 
         def _fid2spec(x):
             xr = np.asarray(x).reshape(im_size)
