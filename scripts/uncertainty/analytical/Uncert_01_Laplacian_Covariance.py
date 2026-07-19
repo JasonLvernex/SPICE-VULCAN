@@ -30,6 +30,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"]  = "1"
 
 import argparse
+import re
 import sys
 import traceback
 from concurrent.futures import ProcessPoolExecutor
@@ -46,6 +47,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from utils.scan_params import load_scan_params
+from utils.pipeline_utils import make_brain_mask
 from utils.utils import (
     NUFFTOp, calc_Bmatrix, read_training_data_from_csv, Calc_B0_matrix_mx,
     build_gram_for_worker,
@@ -237,6 +239,43 @@ def solve_one_voxel(vox_idx):
 
 # ── argparse ──────────────────────────────────────────────────────────────────
 
+def parse_run_tag(run_tag):
+    """Parse a recon_01_run_spice.py run-tag like 'w5000_l0.0001' -> (wmax, lam).
+
+    Returns (None, None) if run_tag is empty or doesn't match the w<..>_l<..> pattern.
+    """
+    if not run_tag:
+        return None, None
+    m = re.match(r"^w([0-9.eE+-]+)_l([0-9.eE+-]+)$", run_tag)
+    if not m:
+        return None, None
+    return float(m.group(1)), float(m.group(2))
+
+
+def resolve_lambda_args(args):
+    """Fill in --lambda/--lambda-we-max from --run-tag when omitted, and warn
+    (without overriding) when an explicitly-passed value disagrees with the tag."""
+    tag_wmax, tag_lam = parse_run_tag(args.run_tag)
+
+    if args.lam is None:
+        args.lam = tag_lam if tag_lam is not None else 1e-4
+    elif tag_lam is not None and not np.isclose(args.lam, tag_lam, rtol=1e-6):
+        print(f"[uncert] WARNING: --lambda {args.lam:g} does not match --run-tag "
+              f"{args.run_tag!r} (which implies lambda={tag_lam:g}). "
+              f"Double-check you're pointing at the right SPICE run — "
+              f"proceeding with the explicitly passed --lambda {args.lam:g}.")
+
+    if args.lambda_we_max is None:
+        args.lambda_we_max = tag_wmax if tag_wmax is not None else 5000.0
+    elif tag_wmax is not None and not np.isclose(args.lambda_we_max, tag_wmax, rtol=1e-6):
+        print(f"[uncert] WARNING: --lambda-we-max {args.lambda_we_max:g} does not match "
+              f"--run-tag {args.run_tag!r} (which implies wmax={tag_wmax:g}). "
+              f"Double-check you're pointing at the right SPICE run — "
+              f"proceeding with the explicitly passed --lambda-we-max {args.lambda_we_max:g}.")
+
+    return args
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="SPICE Hessian uncertainty — step 8")
     p.add_argument("--data-dir",      required=True)
@@ -254,15 +293,25 @@ def parse_args():
     p.add_argument("--dim",           type=int,   nargs=2, default=[64, 64], metavar=("NY", "NX"))
     p.add_argument("--rank",          type=int,   default=20,
                    help="SPICE subspace rank (must match 04_run_spice.py)")
-    p.add_argument("--lambda",        type=float, default=1e-4, dest="lam",
-                   help="Regularisation lambda for Hessian (same as SPICE solve)")
-    p.add_argument("--lambda-we-max", type=float, default=5000.0,
-                   help="Max edge weight W_max for calc_Bmatrix")
+    p.add_argument("--lambda",        type=float, default=None, dest="lam",
+                   help="Regularisation lambda for Hessian (same as SPICE solve). "
+                        "If omitted, parsed from --run-tag (e.g. w5000_l0.0001); "
+                        "if both given and they disagree, a warning is printed and "
+                        "the explicit --lambda wins.")
+    p.add_argument("--lambda-we-max", type=float, default=None,
+                   help="Max edge weight W_max for calc_Bmatrix. "
+                        "If omitted, parsed from --run-tag (e.g. w5000_l0.0001); "
+                        "if both given and they disagree, a warning is printed and "
+                        "the explicit --lambda-we-max wins.")
     p.add_argument("--pool-size",     type=int,   default=1)
     p.add_argument("--minpool",       action="store_true",
                    help="Use directional min-pooling for edge weights; match recon_01 --minpool.")
     p.add_argument("--brain-threshold", type=float, default=0.08)
     p.add_argument("--brain-erosion",   type=int,   default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component and fill enclosed holes. Default: off. "
+                        "Match whatever was passed to recon_01_run_spice.py for this run.")
     p.add_argument("--basis-dir",     default="./basis",
                    help="Shared basis directory (contains SS_training CSV)")
     p.add_argument("--csv-name",      default="SS_training",
@@ -285,6 +334,7 @@ def parse_args():
 
 def main():
     args       = parse_args()
+    args       = resolve_lambda_args(args)
     data_dir   = args.data_dir.rstrip("/") + "/"
     if args.out_dir is None:
         args.out_dir = os.path.join("./output", os.path.basename(args.data_dir.rstrip("/")))
@@ -335,9 +385,9 @@ def main():
     print(f"[uncert] B0_mat shape={B0_mat.shape}")
 
     # ── Brain mask ─────────────────────────────────────────────────────────────
-    wref_2d   = np.abs(wref_img.squeeze(-1))
-    wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
-    brain_mask = wref_norm > args.brain_threshold
+    wref_norm, brain_mask, _ = make_brain_mask(
+        wref_img, args.brain_threshold, args.brain_erosion,
+        cleanup=args.brain_mask_cleanup)
     print(f"[uncert] Brain voxels: {brain_mask.sum()}")
 
     # ── Edge-preserving W ─────────────────────────────────────────────────────
