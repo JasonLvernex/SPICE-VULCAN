@@ -80,17 +80,17 @@ SPICE_MARGARITA/
 **Recommended — conda (includes FSL-MRS):**
 
 ```bash
-git clone https://github.com/JasonLvernex/SPICE_Margarita.git
-cd SPICE_Margarita
+git clone https://github.com/JasonLvernex/SPICE-VULCAN.git
+cd SPICE-VULCAN
 conda env create -f environment.yml
-conda activate SPICE_MARGARITA
+conda activate VULCAN
 pip install -e .
 ```
 
 **pip only (FSL-MRS must be installed separately via conda):**
 
 ```bash
-pip install git+https://github.com/JasonLvernex/SPICE_Margarita.git
+pip install git+https://github.com/JasonLvernex/SPICE-VULCAN.git
 ```
 
 > **FSL-MRS / FSL platform note**
