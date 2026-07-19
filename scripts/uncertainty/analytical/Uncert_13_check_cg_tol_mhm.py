@@ -85,6 +85,9 @@ def parse_args():
     p.add_argument("--minpool", action="store_true")
     p.add_argument("--brain-threshold", type=float, default=0.16)
     p.add_argument("--brain-erosion", type=int, default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component and fill enclosed holes. Default: off.")
     p.add_argument("--backend", choices=["finufft", "torchnufft"], default="finufft")
     p.add_argument("--device", default="cpu")
     p.add_argument("--osamp", type=float, default=2.0)
@@ -187,7 +190,8 @@ def main():
     print(f"[cg-tol] voxels={voxels} ranks={ranks} rtols={args.rtols}")
 
     wref = np.load(data_dir + "wref_o.npy", mmap_mode="r")
-    wref_norm, brain_mask, _ = make_brain_mask(wref, args.brain_threshold, args.brain_erosion)
+    wref_norm, brain_mask, _ = make_brain_mask(wref, args.brain_threshold, args.brain_erosion,
+                                                cleanup=args.brain_mask_cleanup)
     W_edge, _, _, _ = calc_Bmatrix(
         wref_norm,
         wmax=args.lambda_we_max,

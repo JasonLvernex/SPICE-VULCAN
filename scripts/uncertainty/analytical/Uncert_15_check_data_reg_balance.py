@@ -96,6 +96,9 @@ def parse_args():
     p.add_argument("--mask-rule", choices=["any", "both"], default="any")
     p.add_argument("--brain-threshold", type=float, default=0.16)
     p.add_argument("--brain-erosion", type=int, default=1)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component and fill enclosed holes. Default: off.")
 
     p.add_argument("--local-voxels", type=int, nargs="*", default=[926, 1500, 2590, 3100])
     p.add_argument("--local-ranks", type=int, nargs="*", default=[0, 5, 10, 15])
@@ -228,7 +231,8 @@ def main():
 
     V = np.load(spice_dir / "V_subspace.npy")[:, : args.rank].astype(D_TYPE)
     wref = np.load(data_dir + "wref_o.npy", mmap_mode="r")
-    wref_norm, brain_mask, _ = make_brain_mask(wref, args.brain_threshold, args.brain_erosion)
+    wref_norm, brain_mask, _ = make_brain_mask(wref, args.brain_threshold, args.brain_erosion,
+                                                cleanup=args.brain_mask_cleanup)
     B0_map = np.load(b0map_dir / "B0_map.npy")
     B0_mat = Calc_B0_matrix_mx(np.nan_to_num(B0_map, nan=0.0), time_axis).reshape(n_vox, n_seq)
     coil_smap = np.load(coilmap_dir / "ecalib_pp.npy", mmap_mode="r")

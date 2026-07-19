@@ -3,17 +3,31 @@
 import glob
 import os
 import numpy as np
-from scipy.ndimage import binary_erosion
+from scipy.ndimage import binary_erosion, binary_fill_holes, label
 
 
-def make_brain_mask(wref_img: np.ndarray, threshold: float, erosion: int = 3):
+def make_brain_mask(wref_img: np.ndarray, threshold: float, erosion: int = 3,
+                     cleanup: bool = False):
     """Brain mask from normalised absolute wref_o.
+
+    cleanup : if True, run an extra cleanup pass on the thresholded mask —
+        keep only the largest connected component (discards disconnected
+        noise blobs outside the brain) and fill any enclosed holes (voxels
+        surrounded by brain that fell under threshold, e.g. a signal void in
+        the centre). Default off, so existing datasets are unaffected.
 
     Returns (wref_norm, brain_mask, brain_mask_inner).
     """
     wref_2d = np.abs(wref_img.squeeze(-1))
     wref_norm = (wref_2d - wref_2d.min()) / (wref_2d.max() - wref_2d.min() + 1e-12)
     brain_mask = wref_norm > threshold
+    if cleanup:
+        labeled, n_components = label(brain_mask)
+        if n_components > 1:
+            sizes = np.bincount(labeled.ravel())
+            sizes[0] = 0  # ignore background label
+            brain_mask = labeled == sizes.argmax()
+        brain_mask = binary_fill_holes(brain_mask)
     brain_mask_inner = binary_erosion(brain_mask, iterations=erosion)
     return wref_norm, brain_mask, brain_mask_inner
 

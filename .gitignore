@@ -40,6 +40,9 @@ build/
 # Visualization folder (scripts + outputs, kept local only)
 viz/
 
+# Scratch / one-off sweep scripts (kept local only)
+tmp/
+
 # Experimental / work-in-progress scripts (kept local only)
 scripts/recon_method/04b_SPICE_refit.py
 scripts/recon_method/04c_SPICE_uoss_refit.py

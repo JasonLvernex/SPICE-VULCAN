@@ -68,6 +68,11 @@ def parse_args():
     p.add_argument("--brain-threshold", type=float, default=0.07,
                    help="Normalized wref_o threshold for brain mask (default 0.07)")
     p.add_argument("--brain-erosion",   type=int,   default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component (drops disconnected noise blobs outside "
+                        "the brain) and fill enclosed holes (e.g. a central signal void). "
+                        "Default: off, use only if a single global threshold isn't enough.")
     p.add_argument("--phase-ppmlim",    type=float, nargs=2, default=[0.0, 7.0], metavar=("LO", "HI"))
     p.add_argument("--phase-method",    type=str,   default=None,
                    help="Phase correction method passed to fsl_mrs: 'max-real' or 'phasta' (default: None = fsl_mrs default)")
@@ -245,7 +250,8 @@ def main():
     # ── Cell 9: brain mask (normalised wref_o) ───────────────────────────────────
     wref_o_img  = np.load(data_dir + "wref_o.npy", mmap_mode="r")
     wref_norm, brain_mask, brain_mask_inner = make_brain_mask(
-        wref_o_img, args.brain_threshold, args.brain_erosion)
+        wref_o_img, args.brain_threshold, args.brain_erosion,
+        cleanup=args.brain_mask_cleanup)
 
     if args.save_plots:
         fig, ax = plt.subplots(figsize=(6, 5))

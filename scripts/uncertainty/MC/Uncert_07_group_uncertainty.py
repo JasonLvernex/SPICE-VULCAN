@@ -199,6 +199,9 @@ def parse_args():
     p.add_argument("--brain-threshold", type=float, default=0.16,
                    help="wref_o normalised threshold for brain mask (default 0.07, matching scripts 02/03)")
     p.add_argument("--brain-erosion",   type=int,   default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component and fill enclosed holes. Default: off.")
     p.add_argument("--plot-metabs",     nargs="+",
                    default=["NAA", "NAA+NAAG", "Cr", "Cr+PCr", "Ins", "Glu", "PCh", "PCh+GPC"])
     p.add_argument("--ref-subject",     default=None,
@@ -245,7 +248,8 @@ def main():
 
     # Brain mask from ref subject (threshold=0.07, consistent with scripts 02/03)
     wref_ref = np.load(os.path.join(ref_data_dir, "wref_o.npy"), mmap_mode="r")
-    wref_norm, brain_mask, _ = make_brain_mask(wref_ref, args.brain_threshold, args.brain_erosion)
+    wref_norm, brain_mask, _ = make_brain_mask(wref_ref, args.brain_threshold, args.brain_erosion,
+                                                cleanup=args.brain_mask_cleanup)
 
     # ── Pre-fitting uncertainty ────────────────────────────────────────────────
     print("\n[group-uncert] === Pre-fitting uncertainty ===")

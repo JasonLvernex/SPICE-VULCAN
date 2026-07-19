@@ -29,7 +29,7 @@ Usage:
     python scripts/recon_method/recon_01_run_spice.py \
         --data-dir data/processed/invivo_250305_01 --basis-dir ./basis/ \
         --backend finufft --save-plots [--brain-threshold 0.16] [--brain-erosion 3]
-        [--rank 15] [--lambda1 1e-4] [--maxiter 120]
+        [--rank 15] [--lambda1 1e-4] [--maxiter 120] [--brain-mask-cleanup]
 """
 
 import argparse
@@ -122,6 +122,11 @@ def parse_args():
                              "Lac","NAA","NAAG","Ins","PCh","PCr","Tau","Asp","PE"])
     p.add_argument("--brain-threshold", type=float, default=0.08)
     p.add_argument("--brain-erosion",   type=int,   default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component (drops disconnected noise blobs outside "
+                        "the brain) and fill enclosed holes (e.g. a central signal void). "
+                        "Default: off, use only if a single global threshold isn't enough.")
     p.add_argument("--ref-nii",         default=None)
     p.add_argument("--save-plots",      action="store_true")
     return p.parse_args()
@@ -195,7 +200,8 @@ def main():
 
     # ── Brain mask ───────────────────────────────────────────────────────────────
     wref_norm, brain_mask, brain_mask_inner = make_brain_mask(
-        wref_img, args.brain_threshold, args.brain_erosion)
+        wref_img, args.brain_threshold, args.brain_erosion,
+        cleanup=args.brain_mask_cleanup)
 
     # ── Build NUFFT operators ─────────────────────────────────────────────────────
     F_OP, Gram_OP, F1D, device_str = build_nufft_ops(

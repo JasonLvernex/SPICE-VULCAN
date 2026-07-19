@@ -76,6 +76,11 @@ def parse_args():
     p.add_argument("--brain-threshold",  type=float, default=0.07,
                    help="Normalized wref_o threshold for brain mask (default 0.07)")
     p.add_argument("--brain-erosion",    type=int,   default=3)
+    p.add_argument("--brain-mask-cleanup", action="store_true",
+                   help="Extra cleanup pass on the thresholded brain mask: keep only the "
+                        "largest connected component (drops disconnected noise blobs outside "
+                        "the brain) and fill enclosed holes (e.g. a central signal void). "
+                        "Default: off, use only if a single global threshold isn't enough.")
     # lipid removal
     p.add_argument("--lss-ppm-low",      type=float, default=0.7)
     p.add_argument("--lss-ppm-high",     type=float, default=1.8)
@@ -88,6 +93,12 @@ def parse_args():
                         "selects more than --n-lipid-voxels")
     p.add_argument("--lipid-rank",       type=int,   default=5,
                    help="SVD truncation rank for V_lipid (spectral subspace), default 5")
+    p.add_argument("--phantom",          action="store_true",
+                   help="Phantom scan: no lipid signal present, so skip LSS/GMM lipid "
+                        "identification and L2 removal entirely. The adjoint-NUFFT data is "
+                        "passed straight through and saved under the usual lipid_removal/ "
+                        "filenames (with zeroed V_lipid/lss_map placeholders) so downstream "
+                        "steps run unchanged. Default: off.")
     # phase correction
     p.add_argument("--phase-ppmlim",     type=float, nargs=2, default=[3.5, 3.9],
                    metavar=("LO", "HI"))
@@ -214,7 +225,8 @@ def main():
 
     # ── Brain mask (single, normalised wref_o) ───────────────────────────────────
     wref_norm, brain_nolip_mask, _ = make_brain_mask(
-        wref_img, args.brain_threshold, args.brain_erosion)
+        wref_img, args.brain_threshold, args.brain_erosion,
+        cleanup=args.brain_mask_cleanup)
 
     # ── Save adj NUFFT before lipid removal (unmasked, lipid ring visible) ──────
     fid_adj = np.ascontiguousarray(SpecToFID(image_blurry, axis=-1).transpose(1, 0, 2)[::-1, :, :])[:, :, np.newaxis, :]
@@ -223,35 +235,8 @@ def main():
     print("[lipidrm] Saved adj_bf_lprm.nii.gz")
     img_masked = image_blurry * brain_nolip_mask[:, :, np.newaxis]
 
-    # ── LSS map ───────────────────────────────────────────────────────────────────
-    print("[lipidrm] Computing LSS map …")
-    img_4d          = image_blurry[:, :, np.newaxis, :]            # (Ny, Nx, 1, T)
-    lss_map, _      = compute_lss(img_4d, PPM_AXIS,
-                                   low_ppm=args.lss_ppm_low, high_ppm=args.lss_ppm_high)
-
+    img_4d = image_blurry[:, :, np.newaxis, :]                      # (Ny, Nx, 1, T)
     vr, vc = args.plot_voxel
-    if args.save_plots:
-        fig, ax = plt.subplots(figsize=(5, 5))
-        im = ax.imshow(np.squeeze(lss_map), origin="lower", cmap="viridis")
-        plt.colorbar(im, ax=ax, label="LSS")
-        ax.set_title("LSS map")
-        plt.tight_layout()
-        fig.savefig(os.path.join(out_dir, "fig_03b_lss_map.png"), dpi=120)
-        plt.close(fig)
-
-    # Raw LSS map for 04b (in-brain GMM classification / W_lip now built there,
-    # next to where the joint refit's spatial regularization is assembled).
-    np.save(os.path.join(out_dir, "lss_map.npy"), np.squeeze(lss_map))
-    print("[lipidrm] Saved lss_map.npy")
-
-    # ── GMM lipid mask ────────────────────────────────────────────────────────────
-    res        = select_lipid_mask_gmm_simple(
-        lss_map, out_dir=out_dir, nsigma=args.nsigma_gmm,
-        max_voxels=args.n_lipid_voxels, topN_fallback=args.topn_fallback,
-        save_plots=args.save_plots,
-    )
-    lipid_mask = res["lipid_mask"]
-    print(f"[lipidrm] Lipid mask: n={res['n_selected']}  method={res['method']}  thr={res['threshold']:.4e}")
 
     if args.save_plots:
         fig, ax = plt.subplots(figsize=(5, 5))
@@ -263,51 +248,96 @@ def main():
         plt.close(fig)
         print("[lipidrm] Saved fig_03a_brain_nolip_mask.png")
 
-    if args.save_plots:
-        plot_mag_and_voxel(img_4d, PPM_AXIS, vr, vc,
-                           "Before L2 lipid removal",
-                           os.path.join(out_dir, "fig_03b_pre_l2.png"))
+    if args.phantom:
+        # Phantoms have no lipid signal — skip LSS/GMM/SVD/L2 removal entirely and
+        # pass the adjoint-NUFFT image straight through as the "lipid-removed" data,
+        # writing zero placeholders for V_lipid/lss_map so 04b/04c/04d's lipid
+        # regularization terms are inert (still needed since those scripts load them).
+        print("[lipidrm] --phantom: skipping lipid identification & L2 removal "
+              "(no lipid signal expected); passing adjoint-NUFFT data straight through.")
+        np.save(os.path.join(out_dir, "lss_map.npy"),
+                np.zeros(brain_nolip_mask.shape, dtype=np.float32))
+        print("[lipidrm] Saved lss_map.npy (zeros — phantom)")
 
-    # ── L2 lipid removal ──────────────────────────────────────────────────────────
-    print("[lipidrm] L2 lipid removal …")
-    mrsi_fid_4d        = SpecToFID(image_blurry, axis=-1)[:, :, np.newaxis, :]  # (Ny,Nx,1,T) FID
-    lipid_fids         = mrsi_fid_4d[lipid_mask[:, :, np.newaxis]]              # (N_vox, T)
-    lipid_basis        = lipid_fids.T                                            # (T, N_vox)
+        V_lipid = np.zeros((N_SEQ, args.lipid_rank), dtype=D_TYPE)
+        np.save(os.path.join(out_dir, "V_lipid.npy"), V_lipid)
+        print(f"[lipidrm] Saved V_lipid.npy  shape={V_lipid.shape}  (zeros — phantom)")
 
-    # ── Save lipid basis matrix (for SVD reuse in 04b joint refit) ──────────
-    np.save(os.path.join(out_dir, "lipid_basis_matrix.npy"), lipid_basis)
-    print(f"[lipidrm] Saved lipid_basis_matrix.npy  shape={lipid_basis.shape}")
+        mrsi_lprm_4d = img_4d.copy()                                # (Ny,Nx,1,T) spectrum
+    else:
+        # ── LSS map ───────────────────────────────────────────────────────────────
+        print("[lipidrm] Computing LSS map …")
+        lss_map, _ = compute_lss(img_4d, PPM_AXIS,
+                                  low_ppm=args.lss_ppm_low, high_ppm=args.lss_ppm_high)
 
-    # ── SVD truncation → V_lipid (spectral subspace for 04b joint refit) ────
-    U_lip_full, s_lip_full, _ = np.linalg.svd(lipid_basis, full_matrices=False)
-    V_lipid = U_lip_full[:, :args.lipid_rank]                                    # (T, lipid_rank)
-    np.save(os.path.join(out_dir, "V_lipid.npy"), V_lipid)
-    print(f"[lipidrm] Saved V_lipid.npy  shape={V_lipid.shape}  "
-          f"top singvals={s_lip_full[:args.lipid_rank]}")
+        if args.save_plots:
+            fig, ax = plt.subplots(figsize=(5, 5))
+            im = ax.imshow(np.squeeze(lss_map), origin="lower", cmap="viridis")
+            plt.colorbar(im, ax=ax, label="LSS")
+            ax.set_title("LSS map")
+            plt.tight_layout()
+            fig.savefig(os.path.join(out_dir, "fig_03b_lss_map.png"), dpi=120)
+            plt.close(fig)
 
-    if args.save_plots:
-        fig, ax = plt.subplots(figsize=(5, 4))
-        ax.plot(s_lip_full[:30], "x-")
-        ax.axvline(args.lipid_rank - 0.5, color="r", ls="--", label=f"lipid_rank={args.lipid_rank}")
-        ax.set_title("Lipid basis singular values")
-        ax.legend()
-        plt.tight_layout()
-        fig.savefig(os.path.join(out_dir, "fig_03e_lipid_singvals.png"), dpi=120)
-        plt.close(fig)
+        # Raw LSS map for 04b (in-brain GMM classification / W_lip now built there,
+        # next to where the joint refit's spatial regularization is assembled).
+        np.save(os.path.join(out_dir, "lss_map.npy"), np.squeeze(lss_map))
+        print("[lipidrm] Saved lss_map.npy")
 
-    # ── Save lipid basis as NIfTI-MRS (tiled to image size) ──────────────────
-    lipid_nmrs = np.tile(lipid_basis.T[np.newaxis, np.newaxis, :, :], (Nx, Ny, 1, 1))
-    gen_nifti_mrs(lipid_nmrs, dwelltime=TS, spec_freq=297.219,
-                  affine=affine).save(os.path.join(out_dir, "lipid_basis.nii.gz"))
-    print(f"[lipidrm] Saved lipid_basis.nii.gz  shape={lipid_nmrs.shape}")
+        # ── GMM lipid mask ────────────────────────────────────────────────────────
+        res        = select_lipid_mask_gmm_simple(
+            lss_map, out_dir=out_dir, nsigma=args.nsigma_gmm,
+            max_voxels=args.n_lipid_voxels, topN_fallback=args.topn_fallback,
+            save_plots=args.save_plots,
+        )
+        lipid_mask = res["lipid_mask"]
+        print(f"[lipidrm] Lipid mask: n={res['n_selected']}  method={res['method']}  thr={res['threshold']:.4e}")
 
-    mrsi_fid_lprm_4d   = lipid_removal_l2(mrsi_fid_4d, lipid_basis, beta=args.lipid_beta)
-    mrsi_lprm_4d       = FIDToSpec(mrsi_fid_lprm_4d, axis=-1)                   # (Ny,Nx,1,T) spectrum
+        if args.save_plots:
+            plot_mag_and_voxel(img_4d, PPM_AXIS, vr, vc,
+                               "Before L2 lipid removal",
+                               os.path.join(out_dir, "fig_03b_pre_l2.png"))
 
-    if args.save_plots:
-        plot_mag_and_voxel(mrsi_lprm_4d, PPM_AXIS, vr, vc,
-                           "After L2 lipid removal",
-                           os.path.join(out_dir, "fig_03b_post_l2.png"))
+        # ── L2 lipid removal ──────────────────────────────────────────────────────
+        print("[lipidrm] L2 lipid removal …")
+        mrsi_fid_4d        = SpecToFID(image_blurry, axis=-1)[:, :, np.newaxis, :]  # (Ny,Nx,1,T) FID
+        lipid_fids         = mrsi_fid_4d[lipid_mask[:, :, np.newaxis]]              # (N_vox, T)
+        lipid_basis        = lipid_fids.T                                            # (T, N_vox)
+
+        # ── Save lipid basis matrix (for SVD reuse in 04b joint refit) ──────────
+        np.save(os.path.join(out_dir, "lipid_basis_matrix.npy"), lipid_basis)
+        print(f"[lipidrm] Saved lipid_basis_matrix.npy  shape={lipid_basis.shape}")
+
+        # ── SVD truncation → V_lipid (spectral subspace for 04b joint refit) ────
+        U_lip_full, s_lip_full, _ = np.linalg.svd(lipid_basis, full_matrices=False)
+        V_lipid = U_lip_full[:, :args.lipid_rank]                                    # (T, lipid_rank)
+        np.save(os.path.join(out_dir, "V_lipid.npy"), V_lipid)
+        print(f"[lipidrm] Saved V_lipid.npy  shape={V_lipid.shape}  "
+              f"top singvals={s_lip_full[:args.lipid_rank]}")
+
+        if args.save_plots:
+            fig, ax = plt.subplots(figsize=(5, 4))
+            ax.plot(s_lip_full[:30], "x-")
+            ax.axvline(args.lipid_rank - 0.5, color="r", ls="--", label=f"lipid_rank={args.lipid_rank}")
+            ax.set_title("Lipid basis singular values")
+            ax.legend()
+            plt.tight_layout()
+            fig.savefig(os.path.join(out_dir, "fig_03e_lipid_singvals.png"), dpi=120)
+            plt.close(fig)
+
+        # ── Save lipid basis as NIfTI-MRS (tiled to image size) ──────────────────
+        lipid_nmrs = np.tile(lipid_basis.T[np.newaxis, np.newaxis, :, :], (Nx, Ny, 1, 1))
+        gen_nifti_mrs(lipid_nmrs, dwelltime=TS, spec_freq=297.219,
+                      affine=affine).save(os.path.join(out_dir, "lipid_basis.nii.gz"))
+        print(f"[lipidrm] Saved lipid_basis.nii.gz  shape={lipid_nmrs.shape}")
+
+        mrsi_fid_lprm_4d   = lipid_removal_l2(mrsi_fid_4d, lipid_basis, beta=args.lipid_beta)
+        mrsi_lprm_4d       = FIDToSpec(mrsi_fid_lprm_4d, axis=-1)                   # (Ny,Nx,1,T) spectrum
+
+        if args.save_plots:
+            plot_mag_and_voxel(mrsi_lprm_4d, PPM_AXIS, vr, vc,
+                               "After L2 lipid removal",
+                               os.path.join(out_dir, "fig_03b_post_l2.png"))
 
     # ── Mask outside brain ────────────────────────────────────────────────────────
     mrsi_lprm_masked                  = mrsi_lprm_4d[:, :, 0, :].copy()
