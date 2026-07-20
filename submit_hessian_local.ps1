@@ -115,6 +115,12 @@ foreach ($lam in $Lambdas) {
         $jobs += Start-Job -Name "hess_${runTag}_$i" -ScriptBlock {
             Set-Location $using:repoRoot
             $env:KMP_DUPLICATE_LIB_OK = "TRUE"
+            # Python fully buffers stdout when it's not a real terminal (i.e. always,
+            # when run under a job) -- most of the setup-phase prints in Uncert_01
+            # don't pass flush=True, so without this nothing shows up until the
+            # buffer fills or the process exits. This forces every print through
+            # immediately, in the main process AND in each worker it forks.
+            $env:PYTHONUNBUFFERED = "1"
             & $using:PythonExe scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py `
                 @using:commonArgs --vox-start $using:voxStart --vox-end $using:voxEnd
         }
