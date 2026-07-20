@@ -20,6 +20,15 @@
     silently produce mismatched paths for some lambdas (verified: 1e-4, 1e-3,
     3e-3, 4e-3, 1e-2, 1e-1 all fall on the .NET/Python formatting divergence).
 
+    The brain voxel count (used to size each job's --vox-start/--vox-end slice)
+    is auto-detected by calling make_brain_mask() with the same threshold/
+    erosion/cleanup settings passed to Uncert_01 itself (unless -TotalVoxels is
+    given explicitly). Overshooting this (e.g. guessing the full 64x64=4096
+    grid when only ~1700 voxels are actually in-brain) does NOT "safely clip" —
+    it unbalances the split: with a large enough overshoot, an early job's
+    slice can absorb the entire real voxel list while later jobs get an empty
+    slice and do nothing.
+
     Run from the repo root (or anywhere — it cd's to its own location first).
 
 .EXAMPLE
@@ -38,7 +47,7 @@ param(
     [switch]  $NoBrainMaskCleanup,      # pass this to skip --brain-mask-cleanup
     [int]     $CgMaxiter        = 300,
     [double]  $CgRtol           = 1e-3,
-    [int]     $TotalVoxels      = 4096, # full 64x64 grid; script clips to actual brain voxel count
+    [int]     $TotalVoxels      = 0,    # 0 = auto-detect actual brain voxel count; >0 overrides
     [int]     $NJobs            = 2,    # parallel python processes per lambda
     [int]     $MaxWorkersPerJob = 61,   # Windows hard cap per ProcessPoolExecutor
     [string]  $PythonExe        = "d:\anaconda3\envs\VULCAN\python.exe"
@@ -53,6 +62,22 @@ function Get-RunTag([string]$wmaxStr, [string]$lamStr) {
     # are passed through as raw strings (sys.argv) and parsed by Python itself, so
     # no PowerShell double->string round-trip can perturb the value beforehand.
     (& $PythonExe -c "import sys; print(f'w{float(sys.argv[1]):g}_l{float(sys.argv[2]):g}')" $wmaxStr $lamStr).Trim()
+}
+
+function Get-BrainVoxelCount([string]$dataDir, [double]$threshold, [int]$erosion, [bool]$cleanup) {
+    # Same make_brain_mask() call Uncert_01 itself uses, so the count (and hence
+    # the chunk split) exactly matches what the script will actually process —
+    # no guessing/overshooting the grid size and hoping slicing clips evenly.
+    $cleanupArg = if ($cleanup) { "1" } else { "0" }
+    $out = & $PythonExe -c "import sys, numpy as np; sys.path.insert(0, '.'); from utils.pipeline_utils import make_brain_mask; wref = np.load(sys.argv[1] + '/wref_o.npy', mmap_mode='r'); _, mask, _ = make_brain_mask(wref, float(sys.argv[2]), int(sys.argv[3]), cleanup=bool(int(sys.argv[4]))); print(int(mask.sum()))" $dataDir $threshold $erosion $cleanupArg
+    return [int]($out.Trim())
+}
+
+if ($TotalVoxels -le 0) {
+    $cleanupOn = -not $NoBrainMaskCleanup
+    Write-Host "[hessian] auto-detecting brain voxel count for $Subject (threshold=$BrainThreshold erosion=$BrainErosion cleanup=$cleanupOn) …"
+    $TotalVoxels = Get-BrainVoxelCount -dataDir "data/processed/$Subject" -threshold $BrainThreshold -erosion $BrainErosion -cleanup $cleanupOn
+    Write-Host "[hessian] detected $TotalVoxels brain voxels"
 }
 
 $chunk = [Math]::Ceiling($TotalVoxels / $NJobs)
