@@ -8,10 +8,20 @@
     Windows caps a single ProcessPoolExecutor at 61 workers (WaitForMultipleObjects
     hard limit), regardless of how many physical cores the machine has. To use more
     of a big workstation (e.g. 128 cores), this script launches -NJobs separate
-    Python processes as PowerShell background jobs per lambda, each with its own
-    <=61-worker pool, each handling a slice of the brain-voxel list via
-    --vox-start/--vox-end. Lambdas are run one at a time (each lambda's jobs use
-    the full core budget); voxel jobs within a lambda run in parallel.
+    Python processes per lambda, each with its own <=61-worker pool, each handling
+    a slice of the brain-voxel list via --vox-start/--vox-end. Lambdas are run one
+    at a time (each lambda's jobs use the full core budget); voxel jobs within a
+    lambda run in parallel.
+
+    Each job opens in its own real console window (Start-Process, not Start-Job) --
+    Uncert_01's own output (including tqdm's live CG-iteration progress bar) is not
+    reliable to capture through PowerShell's job/pipe machinery: Start-Job fully
+    buffers everything until the job ends, and tqdm redraws with \r (not \n), which
+    doesn't survive being piped through subprocess -> job -> Receive-Job -> console
+    as separate lines. A real console window sidesteps all of that -- it's just
+    Uncert_01 running normally, so you see exactly what you'd see running it by
+    hand, including the live CG progress bar, which is what you actually want when
+    diagnosing why a run is slow.
 
     Run-tags are derived as "w<Wmax>_l<lambda>" using Python's own :g formatting
     (via a tiny python -c call) so they exactly match the directory names
@@ -56,6 +66,12 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = $PSScriptRoot
 Set-Location $repoRoot
+
+# Applies to this process and everything it spawns (Start-Process children
+# inherit the parent's environment block). See KMP note below and the
+# PYTHONUNBUFFERED note in the job-launch loop.
+$env:KMP_DUPLICATE_LIB_OK = "TRUE"   # avoid the torch/MKL duplicate-OpenMP-runtime crash
+$env:PYTHONUNBUFFERED     = "1"      # not load-bearing for a real console window, but harmless
 
 function Get-RunTag([string]$wmaxStr, [string]$lamStr) {
     # Mirror recon_01_run_spice.py's f"w{wmax:g}_l{lambda1:g}" exactly. wmax/lambda
@@ -106,49 +122,28 @@ foreach ($lam in $Lambdas) {
     )
     if (-not $NoBrainMaskCleanup) { $commonArgs += "--brain-mask-cleanup" }
 
-    $jobs = @()
+    $procs = @()
     for ($i = 0; $i -lt $NJobs; $i++) {
         $voxStart = $i * $chunk
         $voxEnd   = [Math]::Min($voxStart + $chunk, $TotalVoxels)
-        Write-Host "[hessian]   job $i : voxels [$voxStart : $voxEnd)"
+        Write-Host "[hessian]   job $i : voxels [$voxStart : $voxEnd)  (opening its own console window)"
 
-        $jobs += Start-Job -Name "hess_${runTag}_$i" -ScriptBlock {
-            Set-Location $using:repoRoot
-            $env:KMP_DUPLICATE_LIB_OK = "TRUE"
-            # Python fully buffers stdout when it's not a real terminal (i.e. always,
-            # when run under a job) -- most of the setup-phase prints in Uncert_01
-            # don't pass flush=True, so without this nothing shows up until the
-            # buffer fills or the process exits. This forces every print through
-            # immediately, in the main process AND in each worker it forks.
-            $env:PYTHONUNBUFFERED = "1"
-            & $using:PythonExe scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py `
-                @using:commonArgs --vox-start $using:voxStart --vox-end $using:voxEnd
-        }
+        $fullArgs = $commonArgs + @(
+            "--vox-start", "$voxStart",
+            "--vox-end",   "$voxEnd"
+        )
+        $scriptArgs = @("scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py") + $fullArgs
+
+        # Start-Process opens a real console window running python directly --
+        # no capture, no piping, so Uncert_01's own output (prints, tqdm bar)
+        # renders exactly as it would if you ran this command by hand.
+        $procs += Start-Process -FilePath $PythonExe -ArgumentList $scriptArgs `
+            -WorkingDirectory $repoRoot -PassThru
     }
 
-    Write-Host "[hessian]   $($jobs.Count) job(s) running - streaming output every 5s (Ctrl+C to stop watching, jobs keep running) ..."
-    while ($jobs | Where-Object { $_.State -eq 'Running' }) {
-        Start-Sleep -Seconds 5
-        foreach ($j in $jobs) {
-            $jobErr = $null
-            $out = Receive-Job $j -ErrorVariable jobErr -ErrorAction SilentlyContinue
-            foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
-            # tqdm writes its progress bar to stderr; PowerShell wraps stderr lines
-            # from a job as ErrorRecords, so surface them without treating them as
-            # fatal (ErrorActionPreference=Stop would otherwise kill this script on
-            # the first progress-bar tick).
-            foreach ($e in $jobErr) { Write-Host "[$($j.Name)] [stderr] $e" }
-        }
-    }
-    # drain anything that landed between the last poll and completion
-    foreach ($j in $jobs) {
-        $jobErr = $null
-        $out = Receive-Job $j -ErrorVariable jobErr -ErrorAction SilentlyContinue
-        foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
-        foreach ($e in $jobErr) { Write-Host "[$($j.Name)] [stderr] $e" }
-        Write-Host "[$($j.Name)] state: $($j.State)"
-    }
-    $jobs | Remove-Job
+    Write-Host "[hessian]   $($procs.Count) window(s) opened -- watch them directly for CG progress."
+    Write-Host "[hessian]   waiting for lambda=$lam to finish ..."
+    $procs | Wait-Process
 
     Write-Host "[hessian] lambda=$lam done  ->  $hessDir/"
 }
