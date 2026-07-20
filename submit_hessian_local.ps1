@@ -124,14 +124,22 @@ foreach ($lam in $Lambdas) {
     while ($jobs | Where-Object { $_.State -eq 'Running' }) {
         Start-Sleep -Seconds 5
         foreach ($j in $jobs) {
-            $out = Receive-Job $j
+            $jobErr = $null
+            $out = Receive-Job $j -ErrorVariable jobErr -ErrorAction SilentlyContinue
             foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
+            # tqdm writes its progress bar to stderr; PowerShell wraps stderr lines
+            # from a job as ErrorRecords, so surface them without treating them as
+            # fatal (ErrorActionPreference=Stop would otherwise kill this script on
+            # the first progress-bar tick).
+            foreach ($e in $jobErr) { Write-Host "[$($j.Name)] [stderr] $e" }
         }
     }
     # drain anything that landed between the last poll and completion
     foreach ($j in $jobs) {
-        $out = Receive-Job $j
+        $jobErr = $null
+        $out = Receive-Job $j -ErrorVariable jobErr -ErrorAction SilentlyContinue
         foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
+        foreach ($e in $jobErr) { Write-Host "[$($j.Name)] [stderr] $e" }
         Write-Host "[$($j.Name)] state: $($j.State)"
     }
     $jobs | Remove-Job
