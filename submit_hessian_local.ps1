@@ -15,7 +15,7 @@
 
     Run-tags are derived as "w<Wmax>_l<lambda>" using Python's own :g formatting
     (via a tiny python -c call) so they exactly match the directory names
-    recon_01_run_spice.py actually created — e.g. lambda=1e-4 becomes
+    recon_01_run_spice.py actually created - e.g. lambda=1e-4 becomes
     "w5000_l0.0001", not "w5000_l1e-4". Hand-formatting this in PowerShell would
     silently produce mismatched paths for some lambdas (verified: 1e-4, 1e-3,
     3e-3, 4e-3, 1e-2, 1e-1 all fall on the .NET/Python formatting divergence).
@@ -24,12 +24,12 @@
     is auto-detected by calling make_brain_mask() with the same threshold/
     erosion/cleanup settings passed to Uncert_01 itself (unless -TotalVoxels is
     given explicitly). Overshooting this (e.g. guessing the full 64x64=4096
-    grid when only ~1700 voxels are actually in-brain) does NOT "safely clip" —
+    grid when only ~1700 voxels are actually in-brain) does NOT "safely clip" -
     it unbalances the split: with a large enough overshoot, an early job's
     slice can absorb the entire real voxel list while later jobs get an empty
     slice and do nothing.
 
-    Run from the repo root (or anywhere — it cd's to its own location first).
+    Run from the repo root (or anywhere - it cd's to its own location first).
 
 .EXAMPLE
     .\submit_hessian_local.ps1
@@ -66,7 +66,7 @@ function Get-RunTag([string]$wmaxStr, [string]$lamStr) {
 
 function Get-BrainVoxelCount([string]$dataDir, [double]$threshold, [int]$erosion, [bool]$cleanup) {
     # Same make_brain_mask() call Uncert_01 itself uses, so the count (and hence
-    # the chunk split) exactly matches what the script will actually process —
+    # the chunk split) exactly matches what the script will actually process -
     # no guessing/overshooting the grid size and hoping slicing clips evenly.
     $cleanupArg = if ($cleanup) { "1" } else { "0" }
     $out = & $PythonExe -c "import sys, numpy as np; sys.path.insert(0, '.'); from utils.pipeline_utils import make_brain_mask; wref = np.load(sys.argv[1] + '/wref_o.npy', mmap_mode='r'); _, mask, _ = make_brain_mask(wref, float(sys.argv[2]), int(sys.argv[3]), cleanup=bool(int(sys.argv[4]))); print(int(mask.sum()))" $dataDir $threshold $erosion $cleanupArg
@@ -75,7 +75,7 @@ function Get-BrainVoxelCount([string]$dataDir, [double]$threshold, [int]$erosion
 
 if ($TotalVoxels -le 0) {
     $cleanupOn = -not $NoBrainMaskCleanup
-    Write-Host "[hessian] auto-detecting brain voxel count for $Subject (threshold=$BrainThreshold erosion=$BrainErosion cleanup=$cleanupOn) …"
+    Write-Host "[hessian] auto-detecting brain voxel count for $Subject (threshold=$BrainThreshold erosion=$BrainErosion cleanup=$cleanupOn) ..."
     $TotalVoxels = Get-BrainVoxelCount -dataDir "data/processed/$Subject" -threshold $BrainThreshold -erosion $BrainErosion -cleanup $cleanupOn
     Write-Host "[hessian] detected $TotalVoxels brain voxels"
 }
@@ -120,7 +120,7 @@ foreach ($lam in $Lambdas) {
         }
     }
 
-    Write-Host "[hessian]   waiting for $($jobs.Count) job(s) …"
+    Write-Host "[hessian]   waiting for $($jobs.Count) job(s) ..."
     $jobs | Wait-Job | Out-Null
 
     foreach ($j in $jobs) {
