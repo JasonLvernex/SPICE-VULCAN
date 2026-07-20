@@ -55,7 +55,7 @@ param(
     [double]  $BrainThreshold   = 0.10,
     [int]     $BrainErosion     = 1,
     [switch]  $NoBrainMaskCleanup,      # pass this to skip --brain-mask-cleanup
-    [int]     $CgMaxiter        = 300,
+    [int]     $CgMaxiter        = 2000,
     [double]  $CgRtol           = 1e-3,
     [int]     $TotalVoxels      = 0,    # 0 = auto-detect actual brain voxel count; >0 overrides
     [int]     $NJobs            = 2,    # parallel python processes per lambda
