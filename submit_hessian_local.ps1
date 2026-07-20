@@ -120,13 +120,19 @@ foreach ($lam in $Lambdas) {
         }
     }
 
-    Write-Host "[hessian]   waiting for $($jobs.Count) job(s) ..."
-    $jobs | Wait-Job | Out-Null
-
+    Write-Host "[hessian]   $($jobs.Count) job(s) running - streaming output every 5s (Ctrl+C to stop watching, jobs keep running) ..."
+    while ($jobs | Where-Object { $_.State -eq 'Running' }) {
+        Start-Sleep -Seconds 5
+        foreach ($j in $jobs) {
+            $out = Receive-Job $j
+            foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
+        }
+    }
+    # drain anything that landed between the last poll and completion
     foreach ($j in $jobs) {
-        Write-Host ""
-        Write-Host "----- $($j.Name)  (state: $($j.State)) -----"
-        Receive-Job $j
+        $out = Receive-Job $j
+        foreach ($line in $out) { Write-Host "[$($j.Name)] $line" }
+        Write-Host "[$($j.Name)] state: $($j.State)"
     }
     $jobs | Remove-Job
 
