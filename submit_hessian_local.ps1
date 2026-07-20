@@ -1,0 +1,112 @@
+<#
+.SYNOPSIS
+    Runs Uncert_01_Laplacian_Covariance.py (voxel-wise Hessian) for a sweep of
+    lambda values, each split across several parallel Python processes on a
+    single multi-core Windows workstation.
+
+.DESCRIPTION
+    Windows caps a single ProcessPoolExecutor at 61 workers (WaitForMultipleObjects
+    hard limit), regardless of how many physical cores the machine has. To use more
+    of a big workstation (e.g. 128 cores), this script launches -NJobs separate
+    Python processes as PowerShell background jobs per lambda, each with its own
+    <=61-worker pool, each handling a slice of the brain-voxel list via
+    --vox-start/--vox-end. Lambdas are run one at a time (each lambda's jobs use
+    the full core budget); voxel jobs within a lambda run in parallel.
+
+    Run-tags are derived as "w<Wmax>_l<lambda>" using Python's own :g formatting
+    (via a tiny python -c call) so they exactly match the directory names
+    recon_01_run_spice.py actually created — e.g. lambda=1e-4 becomes
+    "w5000_l0.0001", not "w5000_l1e-4". Hand-formatting this in PowerShell would
+    silently produce mismatched paths for some lambdas (verified: 1e-4, 1e-3,
+    3e-3, 4e-3, 1e-2, 1e-1 all fall on the .NET/Python formatting divergence).
+
+    Run from the repo root (or anywhere — it cd's to its own location first).
+
+.EXAMPLE
+    .\submit_hessian_local.ps1
+    .\submit_hessian_local.ps1 -Subject invivo_260623_02 -Lambdas 1e-4,1e-3 -NJobs 3
+#>
+
+param(
+    [string]  $Subject          = "invivo_260717_01",
+    [string]  $BasisDir         = "./basis_shifted/",
+    [string]  $Wmax             = "5000",
+    [string[]]$Lambdas          = @("1e-7","1e-6","6e-6","1e-5","4e-5","1e-4","1e-3","3e-3","4e-3","1e-2","1e-1"),
+    [int]     $Rank             = 10,
+    [double]  $BrainThreshold   = 0.10,
+    [int]     $BrainErosion     = 1,
+    [switch]  $NoBrainMaskCleanup,      # pass this to skip --brain-mask-cleanup
+    [int]     $CgMaxiter        = 300,
+    [double]  $CgRtol           = 1e-3,
+    [int]     $TotalVoxels      = 4096, # full 64x64 grid; script clips to actual brain voxel count
+    [int]     $NJobs            = 2,    # parallel python processes per lambda
+    [int]     $MaxWorkersPerJob = 61,   # Windows hard cap per ProcessPoolExecutor
+    [string]  $PythonExe        = "d:\anaconda3\envs\VULCAN\python.exe"
+)
+
+$ErrorActionPreference = "Stop"
+$repoRoot = $PSScriptRoot
+Set-Location $repoRoot
+
+function Get-RunTag([string]$wmaxStr, [string]$lamStr) {
+    # Mirror recon_01_run_spice.py's f"w{wmax:g}_l{lambda1:g}" exactly. wmax/lambda
+    # are passed through as raw strings (sys.argv) and parsed by Python itself, so
+    # no PowerShell double->string round-trip can perturb the value beforehand.
+    (& $PythonExe -c "import sys; print(f'w{float(sys.argv[1]):g}_l{float(sys.argv[2]):g}')" $wmaxStr $lamStr).Trim()
+}
+
+$chunk = [Math]::Ceiling($TotalVoxels / $NJobs)
+Write-Host "[hessian] subject=$Subject  wmax=$Wmax  lambdas=$($Lambdas -join ', ')"
+Write-Host "[hessian] per lambda: $NJobs job(s) x $MaxWorkersPerJob workers, chunk size=$chunk"
+
+foreach ($lam in $Lambdas) {
+    $runTag = Get-RunTag -wmaxStr $Wmax -lamStr $lam
+    $hessDir = "output/$Subject/hessian_$runTag"
+
+    Write-Host ""
+    Write-Host "=============================================================="
+    Write-Host "[hessian] lambda=$lam  ->  run-tag=$runTag"
+    Write-Host "=============================================================="
+
+    $commonArgs = @(
+        "--data-dir",        "data/processed/$Subject",
+        "--basis-dir",        $BasisDir,
+        "--run-tag",          $runTag,
+        "--rank",             "$Rank",
+        "--brain-threshold",  "$BrainThreshold",
+        "--brain-erosion",    "$BrainErosion",
+        "--cg-maxiter",       "$CgMaxiter",
+        "--cg-rtol",          "$CgRtol",
+        "--max-workers",      "$MaxWorkersPerJob"
+    )
+    if (-not $NoBrainMaskCleanup) { $commonArgs += "--brain-mask-cleanup" }
+
+    $jobs = @()
+    for ($i = 0; $i -lt $NJobs; $i++) {
+        $voxStart = $i * $chunk
+        $voxEnd   = [Math]::Min($voxStart + $chunk, $TotalVoxels)
+        Write-Host "[hessian]   job $i : voxels [$voxStart : $voxEnd)"
+
+        $jobs += Start-Job -Name "hess_${runTag}_$i" -ScriptBlock {
+            Set-Location $using:repoRoot
+            $env:KMP_DUPLICATE_LIB_OK = "TRUE"
+            & $using:PythonExe scripts/uncertainty/analytical/Uncert_01_Laplacian_Covariance.py `
+                @using:commonArgs --vox-start $using:voxStart --vox-end $using:voxEnd
+        }
+    }
+
+    Write-Host "[hessian]   waiting for $($jobs.Count) job(s) …"
+    $jobs | Wait-Job | Out-Null
+
+    foreach ($j in $jobs) {
+        Write-Host ""
+        Write-Host "----- $($j.Name)  (state: $($j.State)) -----"
+        Receive-Job $j
+    }
+    $jobs | Remove-Job
+
+    Write-Host "[hessian] lambda=$lam done  ->  $hessDir/"
+}
+
+Write-Host ""
+Write-Host "[hessian] Sweep complete: $($Lambdas.Count) lambda(s) x $NJobs job(s) each."
